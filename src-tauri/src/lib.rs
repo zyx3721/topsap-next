@@ -25,6 +25,7 @@ pub mod session_guard;
 pub mod settings;
 pub mod shutdown;
 pub mod tls;
+pub mod tray_status;
 pub mod tun;
 pub mod tunnel;
 pub mod update;
@@ -37,6 +38,7 @@ use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, WindowEvent};
 
 use session::Engine;
+use tray_status::TrayState;
 
 pub struct AppState {
     pub engine: Arc<Engine>,
@@ -78,6 +80,8 @@ pub fn run() {
                 log::warn!("启动时应用代理绕过失败：{err}");
             }
             setup_tray(app)?;
+            // 异常断开时托盘图标闪烁，放在托盘创建之后启动
+            crate::tray_status::start_blink_task(app.handle().clone());
             // 放在最后：窗口、托盘与引擎状态都已就绪，自动连接仍会异步延迟启动
             crate::autostart::schedule(app.handle());
             Ok(())
@@ -254,8 +258,8 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &disconnect, &quit])?;
 
-    let mut builder = TrayIconBuilder::new()
-        .tooltip("TopSAP Client")
+    let mut builder = TrayIconBuilder::with_id(tray_status::TRAY_ID)
+        .tooltip(TrayState::Idle.tooltip())
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -281,9 +285,15 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon().cloned() {
+    // 托盘图标保留原应用图标形状，按连接状态着色（未连接=灰）
+    if let Some(icon) = tray_status::init(app.handle()) {
+        builder = builder.icon(icon);
+    } else if let Some(icon) = app.default_window_icon().cloned() {
         builder = builder.icon(icon);
     }
+    // macOS 默认按模板图标渲染（自动黑白），这里保留原始颜色
+    #[cfg(target_os = "macos")]
+    let builder = builder.icon_as_template(false);
     builder.build(app)?;
     Ok(())
 }
