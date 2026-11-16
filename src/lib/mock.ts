@@ -38,6 +38,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let pendingForm: LoginForm | null = null;
 let connectResolve: ((summary: SessionSummary) => void) | null = null;
 let connectReject: ((error: Error) => void) | null = null;
+let mockDnsManual = true;
 
 export function isMockMode(): boolean {
   return (
@@ -186,6 +187,21 @@ async function handle(cmd: string, args?: Record<string, unknown>): Promise<unkn
         };
       });
     }
+
+    case "inspect_network_dns":
+      return {
+        target: mockDnsManual
+          ? {
+              name: "以太网",
+              current: ["192.0.2.53", "198.51.100.5"],
+              dhcp_enabled: true,
+            }
+          : null,
+      };
+
+    case "set_network_dns_auto":
+      mockDnsManual = false;
+      return null;
 
     case "forget_password":
       // 演示动态验证码路径：用户名以 sms 开头

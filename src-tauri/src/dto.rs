@@ -230,6 +230,33 @@ pub enum EngineEvent {
     },
 }
 
+/// 本机 DNS 预检目标
+#[derive(Debug, Clone, Serialize)]
+pub struct DnsTargetDto {
+    pub name: String,
+    pub current: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dhcp_enabled: Option<bool>,
+}
+
+/// 本机 DNS 预检结果；检测失败时 `error` 有值
+#[derive(Debug, Clone, Serialize)]
+pub struct DnsInspectionDto {
+    pub target: Option<DnsTargetDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl From<crate::netcfg::preflight::DnsTarget> for DnsTargetDto {
+    fn from(value: crate::netcfg::preflight::DnsTarget) -> Self {
+        Self {
+            name: value.name,
+            current: value.current,
+            dhcp_enabled: value.dhcp_enabled,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -377,5 +404,21 @@ mod tests {
         };
         let s = s.sanitized();
         assert_eq!(s.disabled_routes, vec!["10.0.0.0/8".to_string()]);
+    }
+
+    #[test]
+    fn dns_预检结果序列化() {
+        let dto = DnsInspectionDto {
+            target: Some(DnsTargetDto {
+                name: "以太网".into(),
+                current: vec!["192.0.2.53".into()],
+                dhcp_enabled: Some(true),
+            }),
+            error: None,
+        };
+        let value = serde_json::to_value(dto).unwrap();
+        assert_eq!(value["target"]["name"], "以太网");
+        assert_eq!(value["target"]["current"][0], "192.0.2.53");
+        assert!(value.get("error").is_none());
     }
 }

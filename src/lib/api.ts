@@ -6,6 +6,7 @@ import type {
   AppSettings,
   CaptchaDto,
   ConnectionProfile,
+  DnsInspection,
   EngineEvent,
   ForgetPasswordResult,
   LineProbe,
@@ -70,6 +71,9 @@ export const api = {
     call<CaptchaDto>("fetch_captcha", { gateway, port }),
   probeLines: (lines: string[], timeout: number) =>
     call<LineProbe[]>("probe_lines", { lines, timeout }),
+  inspectNetworkDns: (force = false) =>
+    call<DnsInspection>("inspect_network_dns", { force }),
+  setNetworkDnsAuto: () => call<void>("set_network_dns_auto"),
   forgetPassword: (gateway: string, port: number, user: string, code: string, cookie: string) =>
     call<ForgetPasswordResult>("forget_password", { gateway, port, user, code, cookie }),
   resetPassword: (

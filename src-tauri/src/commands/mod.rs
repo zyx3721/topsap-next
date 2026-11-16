@@ -6,6 +6,7 @@
 pub mod app;
 pub mod conn;
 pub mod diag;
+pub mod net;
 pub mod profiles;
 pub mod settings;
 pub mod update;

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { BasicInfoCard } from "../components/BasicInfoCard";
 import { ChangePasswordDialog } from "../components/ChangePasswordDialog";
+import { DnsWarningBanner } from "../components/DnsWarningBanner";
 import { ExpiredPasswordDialog } from "../components/ExpiredPasswordDialog";
 import { ForgotPasswordDialog } from "../components/ForgotPasswordDialog";
 import { LinePickerDialog } from "../components/LinePickerDialog";
@@ -24,6 +25,7 @@ import {
   Select,
   Switch,
 } from "../components/ui";
+import type { DnsPreflightController } from "../hooks/useDnsPreflight";
 import { isBusyPhase, type EngineView } from "../hooks/useEngineEvents";
 import { api } from "../lib/api";
 import { firstLine, isValidGateway, isValidPort } from "../lib/format";
@@ -71,6 +73,7 @@ export function ConnectPage({
   everConnected,
   abnormalDisconnect,
   connecting,
+  dnsPreflight,
   onConnect,
   onDisconnect,
   onClearLogs,
@@ -80,6 +83,7 @@ export function ConnectPage({
   everConnected?: boolean;
   abnormalDisconnect?: boolean;
   connecting: boolean;
+  dnsPreflight: DnsPreflightController;
   onConnect: (form: LoginForm, options?: ConnectOptions) => void;
   onDisconnect: () => void;
   onClearLogs: () => void;
@@ -230,7 +234,15 @@ export function ConnectPage({
 
   const connected = engine.phase === "connected";
   const busy = isBusyPhase(engine.phase) || connecting || probingLines;
-  const connectDisabled = busy || connected;
+  const dnsGate = dnsPreflight.startupChecking || dnsPreflight.applying;
+  const connectDisabled = busy || connected || dnsGate;
+  const dnsPhaseBusy = engine.phase !== "idle" && engine.phase !== "failed";
+  const dnsDisabled = dnsPhaseBusy || dnsPreflight.checking || connecting;
+  const dnsDisabledHint = dnsPreflight.checking
+    ? t("正在检查本机 DNS…")
+    : engine.phase === "connected"
+      ? t("当前已连接，请先断开连接后再修改 DNS")
+      : t("连接进行中，请稍后再修改 DNS");
   const disconnectDisabled = !connected && !isBusyPhase(engine.phase);
 
   const submit = async () => {
@@ -297,6 +309,16 @@ export function ConnectPage({
         masked=""
         everConnected={everConnected}
         abnormalDisconnect={abnormalDisconnect}
+      />
+
+      <DnsWarningBanner
+        target={dnsPreflight.target}
+        applying={dnsPreflight.applying}
+        error={dnsPreflight.error}
+        disabled={dnsDisabled}
+        disabledHint={dnsDisabledHint}
+        onApply={() => void dnsPreflight.apply()}
+        onRefresh={() => void dnsPreflight.refresh()}
       />
 
       {connected ? (
@@ -480,12 +502,16 @@ export function ConnectPage({
               </span>
             </div>
 
+            {dnsPreflight.startupChecking ? (
+              <p className="text-[11px] text-faint">{t("正在检查本机 DNS…")}</p>
+            ) : null}
+
             <div className="flex items-center justify-between gap-3 pt-1">
               <div className="space-y-1">
                 <button
                   type="button"
                   onClick={() => setForgotOpen(true)}
-                  disabled={busy}
+                  disabled={busy || dnsGate}
                   className="text-[11px] font-medium text-accent hover:underline disabled:opacity-50"
                 >
                   {t("忘记密码？")}

@@ -9,6 +9,7 @@ use super::{hosts, routes, shell, NetError, RouteReport};
 
 mod address;
 
+pub(crate) use address::adapter_identity_by_index;
 use address::{persist_static_address, set_unicast_address};
 
 /// 配址兜底总等待时长；新建 Wintun 网卡的地址生效可能晚至 7-10 秒
@@ -911,6 +912,16 @@ fn ip_forward_table() -> Result<Vec<MibIpForwardRow>, u32> {
         )
     };
     Ok(rows.to_vec())
+}
+
+/// 返回 IPv4 默认路由候选：接口索引、下一跳、metric1
+pub(crate) fn default_route_candidates() -> Result<Vec<(u32, u32, u32)>, u32> {
+    let rows = ip_forward_table()?;
+    Ok(rows
+        .into_iter()
+        .filter(|row| row.dest == 0 && row.mask == 0)
+        .map(|row| (row.if_index, row.next_hop, row.metric1))
+        .collect())
 }
 
 fn create_forward_entry(row: &MibIpForwardRow) -> u32 {

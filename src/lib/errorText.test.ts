@@ -198,6 +198,27 @@ describe("localizeError", () => {
     );
   });
 
+  it("翻译本机 DNS 修改约束", () => {
+    expect(localizeError("请先断开连接后再修改本机 DNS")).toBe(
+      "Disconnect before changing local DNS",
+    );
+    expect(localizeError("未找到默认路由，无法修改本机 DNS")).toBe(
+      "No default route was found; local DNS cannot be changed",
+    );
+    expect(localizeError("默认网络位于虚拟网卡，已跳过本机 DNS 修改")).toBe(
+      "The default network is a virtual adapter; local DNS changes were skipped",
+    );
+    expect(localizeError("DNS 修改后回读仍为手动配置")).toBe(
+      "DNS still appears to be manually configured after the change.",
+    );
+    expect(localizeError("本机 DNS 预检超时（5 秒）")).toBe(
+      "Local DNS precheck timed out after 5 seconds.",
+    );
+    expect(localizeError("设置 IPv4 DNS 失败：拒绝访问")).toBe(
+      "Failed to set IPv4 DNS: 拒绝访问",
+    );
+  });
+
   it("未匹配的文案保持原样", () => {
     expect(localizeError("未知的新错误")).toBe("未知的新错误");
   });

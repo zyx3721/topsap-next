@@ -51,7 +51,7 @@ struct MibUnicastIpAddressTable {
     table: [MibUnicastIpAddressRow; 1],
 }
 
-/// `IP_ADAPTER_ADDRESSES` 的前缀；只读取遍历所需的字段
+/// `IP_ADAPTER_ADDRESSES` 的前缀；读取遍历、GUID 与连接名所需字段
 #[repr(C)]
 #[allow(dead_code)]
 struct IpAdapterAddresses {
@@ -59,6 +59,21 @@ struct IpAdapterAddresses {
     if_index: u32,
     next: *mut IpAdapterAddresses,
     adapter_name: *const u8,
+    first_unicast_address: *const std::ffi::c_void,
+    first_anycast_address: *const std::ffi::c_void,
+    first_multicast_address: *const std::ffi::c_void,
+    first_dns_server_address: *const std::ffi::c_void,
+    dns_suffix: *const u16,
+    description: *const u16,
+    friendly_name: *const u16,
+}
+
+/// 网卡身份：GUID、连接名称与描述
+#[derive(Debug, Clone)]
+pub(crate) struct AdapterIdentity {
+    pub guid: String,
+    pub friendly_name: String,
+    pub description: String,
 }
 
 #[allow(non_snake_case)]
@@ -154,8 +169,8 @@ pub(super) fn set_unicast_address(index: u32, vip: Ipv4Addr, prefix: u8) -> Resu
     }
 }
 
-/// 按接口索引读取网卡 GUID（`{...}`），用于定位 Tcpip 配置键
-fn adapter_guid_by_index(index: u32) -> Option<String> {
+/// 按接口索引读取网卡 GUID、连接名称与描述
+pub(crate) fn adapter_identity_by_index(index: u32) -> Option<AdapterIdentity> {
     let flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
     let mut size = 0u32;
     let code = unsafe {
@@ -192,11 +207,25 @@ fn adapter_guid_by_index(index: u32) -> Option<String> {
     while !current.is_null() {
         let row = unsafe { &*current };
         if row.if_index == index {
-            return unsafe { read_c_string(row.adapter_name) };
+            let guid = unsafe { read_c_string(row.adapter_name) }?;
+            let description = unsafe { read_utf16_string(row.description) };
+            let friendly_name = unsafe { read_utf16_string(row.friendly_name) }
+                .or_else(|| description.clone())
+                .unwrap_or_else(|| guid.clone());
+            return Some(AdapterIdentity {
+                guid,
+                friendly_name,
+                description: description.unwrap_or_default(),
+            });
         }
         current = row.next;
     }
     None
+}
+
+/// 按接口索引读取网卡 GUID（`{...}`），用于定位 Tcpip 配置键
+fn adapter_guid_by_index(index: u32) -> Option<String> {
+    adapter_identity_by_index(index).map(|identity| identity.guid)
 }
 
 unsafe fn read_c_string(ptr: *const u8) -> Option<String> {
@@ -212,6 +241,25 @@ unsafe fn read_c_string(ptr: *const u8) -> Option<String> {
         bytes.push(byte);
     }
     None
+}
+
+unsafe fn read_utf16_string(ptr: *const u16) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    let mut units = Vec::new();
+    for offset in 0..512 {
+        let value = unsafe { *ptr.add(offset) };
+        if value == 0 {
+            break;
+        }
+        units.push(value);
+    }
+    if units.is_empty() {
+        None
+    } else {
+        Some(String::from_utf16_lossy(&units))
+    }
 }
 
 /// 把静态 IP 与掩码写入网卡的持久配置；仅用于 IPv4 属性窗口展示

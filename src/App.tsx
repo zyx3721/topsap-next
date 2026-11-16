@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast, Toaster } from "sonner";
 
@@ -15,6 +15,7 @@ import {
   submitCaptcha,
   submitSms,
 } from "./hooks/useConnection";
+import { useDnsPreflight } from "./hooks/useDnsPreflight";
 import { useEngineEvents } from "./hooks/useEngineEvents";
 import { api } from "./lib/api";
 import { localizeError } from "./lib/errorText";
@@ -56,6 +57,16 @@ export default function App() {
 
   const connect = useConnect();
   const disconnect = useDisconnect();
+  const dnsPreflight = useDnsPreflight();
+  const previousPhase = useRef(engine.phase);
+  const refreshDnsPreflight = dnsPreflight.refresh;
+
+  useEffect(() => {
+    if (previousPhase.current !== "idle" && engine.phase === "idle") {
+      void refreshDnsPreflight();
+    }
+    previousPhase.current = engine.phase;
+  }, [engine.phase, refreshDnsPreflight]);
 
   const infoQuery = useQuery({ queryKey: queryKeys.appInfo, queryFn: api.appInfo });
   const updateQuery = useQuery({
@@ -300,6 +311,7 @@ export default function App() {
             everConnected={everConnected}
             abnormalDisconnect={engine.abnormalDisconnect}
             connecting={connect.isPending}
+            dnsPreflight={dnsPreflight}
             onConnect={handleConnect}
             onDisconnect={() =>
               disconnect.mutate(undefined, { onSuccess: () => setSummary(null) })

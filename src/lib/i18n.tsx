@@ -502,6 +502,21 @@ const EN: Record<string, string> = {
     "Showing the first {n} entries; the full list is written to the runtime log.",
   "连接流程已结束，无需再确认": "The connection flow has already ended; no confirmation is needed",
   "提交失败": "Submission failed",
+  // 本机 DNS 预检
+  "本机 DNS 不是自动获取": "Local DNS is not set to automatic",
+  "检测到默认网络「{name}」使用手动配置的 DNS。手动 DNS 可能导致网关域名或内网域名解析异常。":
+    "The default network \"{name}\" uses manually configured DNS. This may prevent the gateway or internal domains from resolving.",
+  "当前 DNS：": "Current DNS:",
+  "改为自动获取会清除这些手动 DNS，且断开连接后不会恢复原设置。若当前网络要求手动 DNS，可能影响其他应用或内网访问。":
+    "Setting DNS to automatic clears these manual entries and does not restore them after disconnecting. If this network requires manual DNS, other apps or intranet access may be affected.",
+  "该网卡使用静态 IP，改为自动获取 DNS 后可能没有可用的 DNS 服务器，请确认网络支持 DHCP。":
+    "This adapter uses a static IP; setting DNS to automatic may leave no usable DNS servers. Make sure the network supports DHCP.",
+  "改为自动获取": "Set to automatic",
+  "正在修改…": "Updating…",
+  "正在检查本机 DNS…": "Checking local DNS…",
+  "当前已连接，请先断开连接后再修改 DNS": "Disconnect before changing DNS",
+  "连接进行中，请稍后再修改 DNS": "Wait for the connection attempt to finish",
+  "已将本机 DNS 改为自动获取": "Local DNS is now set to automatic",
   // 自检
   "提示": "Notice",
   "网卡自检通过（{passed}/{total}）": "Adapter self-test passed ({passed}/{total})",

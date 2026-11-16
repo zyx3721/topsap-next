@@ -122,6 +122,52 @@ export function localizeError(message: string): string {
     "Route conflict confirmation timed out after $1 seconds",
   );
   text = text.replace(
+    /^请先断开连接后再修改本机 DNS$/,
+    "Disconnect before changing local DNS",
+  );
+  text = text.replace(
+    /^未找到默认路由，无法修改本机 DNS$/,
+    "No default route was found; local DNS cannot be changed",
+  );
+  text = text.replace(
+    /^默认网络位于虚拟网卡，已跳过本机 DNS 修改$/,
+    "The default network is a virtual adapter; local DNS changes were skipped",
+  );
+  text = text.replace(
+    /^无法识别网络服务的 DNS 配置$/,
+    "Unable to recognize the DNS configuration of the network service.",
+  );
+  text = text.replace(
+    /^DNS 修改后回读仍为手动配置$/,
+    "DNS still appears to be manually configured after the change.",
+  );
+  text = text.replace(
+    /^本机 DNS 预检超时（(\d+) 秒）$/,
+    "Local DNS precheck timed out after $1 seconds.",
+  );
+  text = text.replace(
+    /^读取路由表失败（错误码 (\d+)）$/,
+    "Failed to read the routing table (error $1).",
+  );
+  text = text.replace(
+    /^未找到接口索引 (\d+) 对应的网卡$/,
+    "No adapter was found for interface index $1.",
+  );
+  text = text.replace(
+    /^未找到默认接口 (.+) 对应的网络服务$/,
+    "No network service was found for the default interface $1.",
+  );
+  text = text.replace(
+    /^设置 IPv4 DNS 失败：(.+)$/,
+    "Failed to set IPv4 DNS: $1",
+  );
+  text = text.replace(
+    /^设置 IPv6 DNS 失败：(.+)$/,
+    "Failed to set IPv6 DNS: $1",
+  );
+  text = text.replace(/^设置 DNS 失败：(.+)$/, "Failed to set DNS: $1");
+  text = text.replace(/^读取 DNS 失败：(.+)$/, "Failed to read DNS: $1");
+  text = text.replace(
     /^只允许清理 utun\* 虚拟网卡$/,
     "Only utun* virtual interfaces can be cleaned up",
   );

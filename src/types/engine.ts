@@ -53,6 +53,17 @@ export interface ConnectOptions {
   passwordAutoFilled?: boolean;
 }
 
+export interface DnsTarget {
+  name: string;
+  current: string[];
+  dhcp_enabled?: boolean;
+}
+
+export interface DnsInspection {
+  target: DnsTarget | null;
+  error?: string;
+}
+
 export interface ConnectionProfile {
   name: string;
   login_way: string;

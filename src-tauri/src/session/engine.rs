@@ -323,6 +323,19 @@ impl Engine {
         self.lock().phase.connected()
     }
 
+    /// 仅未连接且无进行中的连接时允许修改本机 DNS
+    pub fn ensure_dns_change_allowed(&self) -> Result<(), String> {
+        if self.connecting.load(Ordering::SeqCst) {
+            return Err("请先断开连接后再修改本机 DNS".to_string());
+        }
+        let phase = self.lock().phase;
+        if matches!(phase, Phase::Idle | Phase::Failed) {
+            Ok(())
+        } else {
+            Err("请先断开连接后再修改本机 DNS".to_string())
+        }
+    }
+
     /// 网关下发的完整路由目录；第二个返回值表示当前是否存在已登录会话
     pub fn route_catalog(&self) -> (Vec<RouteEntry>, bool) {
         let inner = self.lock();

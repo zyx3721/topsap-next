@@ -6,6 +6,7 @@
 pub mod auth;
 pub mod autostart;
 pub mod commands;
+pub mod dns_preflight;
 pub mod dto;
 #[cfg(target_os = "macos")]
 pub mod helper;
@@ -43,6 +44,7 @@ use tray_status::TrayState;
 pub struct AppState {
     pub engine: Arc<Engine>,
     pub dll_path: PathBuf,
+    pub dns_preflight: Arc<dns_preflight::DnsPreflight>,
 }
 
 pub fn run() {
@@ -67,13 +69,21 @@ pub fn run() {
             create_main_window(app.handle())?;
             let dll_path = resolve_dll(app.handle())?;
             let engine = Engine::new(app.handle().clone(), dll_path.clone());
-            app.manage(AppState { engine, dll_path });
+            let preflight = dns_preflight::DnsPreflight::new();
+            app.manage(AppState {
+                engine,
+                dll_path,
+                dns_preflight: preflight.clone(),
+            });
             {
                 let engine = app.state::<AppState>().engine.clone();
                 tauri::async_runtime::spawn(async move {
                     engine.purge_previous_session().await;
                 });
             }
+            tauri::async_runtime::spawn(async move {
+                let _ = preflight.ensure().await;
+            });
             crate::shutdown::install(app.handle());
             let settings = crate::settings::load(app.handle());
             if let Err(err) = crate::proxy_bypass::apply(app.handle(), &settings) {
@@ -128,6 +138,8 @@ pub fn run() {
             commands::conn::change_password_for_login,
             commands::conn::fetch_captcha,
             commands::conn::probe_lines,
+            commands::net::inspect_network_dns,
+            commands::net::set_network_dns_auto,
             commands::conn::forget_password,
             commands::conn::reset_password,
             commands::diag::run_self_test,

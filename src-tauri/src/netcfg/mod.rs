@@ -6,6 +6,7 @@
 use crate::auth::RouteEntry;
 
 pub mod hosts;
+pub mod preflight;
 pub mod shell;
 
 #[cfg(windows)]

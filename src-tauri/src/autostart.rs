@@ -3,7 +3,8 @@
 //! 仅在同时满足以下条件时执行，任何一项不满足都只写运行日志、不打扰用户：
 //! 1. 设置中开启 `auto_connect_on_start`；
 //! 2. 存在连接配置（默认配置优先，否则取第一条）；
-//! 3. 已保存账号与密码（密码从安全存储读取，不经过前端）。
+//! 3. 已保存账号与密码（密码从安全存储读取，不经过前端）；
+//! 4. 启动 DNS 预检结束（成功、失败或超时）后才发起连接。
 //!
 //! 自动连接与手动连接共用 `Engine::connect`，验证码、路由冲突、失败提示等
 //! 流程完全一致；并发时由引擎内部的 `connecting` 原子锁保证只有一方执行。
@@ -15,7 +16,7 @@ use tauri::Manager;
 use crate::dto::{AppSettings, LoginForm};
 use crate::profiles::{self, ConnectionProfile};
 
-/// 等窗口首帧与启动补注销完成后再发起连接，避免启动瞬间的状态竞争
+/// 预检结束后再等窗口首帧与启动补注销完成，避免启动瞬间的状态竞争
 const STARTUP_DELAY: Duration = Duration::from_millis(800);
 
 /// 满足条件时安排一次启动自动连接；不满足时写日志并直接返回。
@@ -24,7 +25,9 @@ pub fn schedule(app: &tauri::AppHandle) {
     if !settings.auto_connect_on_start {
         return;
     }
-    let engine = app.state::<crate::AppState>().engine.clone();
+    let state = app.state::<crate::AppState>();
+    let engine = state.engine.clone();
+    let preflight = state.dns_preflight.clone();
     let form = match prepare(app, &settings) {
         Ok(form) => form,
         Err(reason) => {
@@ -38,6 +41,17 @@ pub fn schedule(app: &tauri::AppHandle) {
         form.gateway, form.user
     ));
     tauri::async_runtime::spawn(async move {
+        let inspection = preflight.ensure().await;
+        if let Some(target) = &inspection.target {
+            engine.report_log(format!(
+                "启动自动连接：本机 DNS 为手动配置（{}），继续连接",
+                target.name
+            ));
+        } else if let Some(error) = &inspection.error {
+            engine.report_log(format!(
+                "启动自动连接：本机 DNS 预检未完成（{error}），继续连接"
+            ));
+        }
         tokio::time::sleep(STARTUP_DELAY).await;
         if let Err(err) = engine.connect(form).await {
             // connect 已把失败原因写入运行日志并更新状态，这里只补一条来源说明

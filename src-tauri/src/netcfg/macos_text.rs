@@ -49,6 +49,33 @@ pub fn parse_dns_servers(text: &str) -> Vec<String> {
     text.lines().filter_map(dns_address).collect()
 }
 
+/// networksetup 读取结果的三种状态
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DnsMode {
+    Automatic,
+    Static(Vec<String>),
+    Unknown,
+}
+
+/// 解析 `-getdnsservers` 输出：IP 列表为手动，已知提示或空为自动，其余为未知
+pub fn parse_dns_mode(text: &str) -> DnsMode {
+    let servers = parse_dns_servers(text);
+    if !servers.is_empty() {
+        return DnsMode::Static(servers);
+    }
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return DnsMode::Automatic;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("there aren't any dns servers") || lower.contains("there are no dns servers")
+    {
+        DnsMode::Automatic
+    } else {
+        DnsMode::Unknown
+    }
+}
+
 /// 归一化 DNS 地址：去掉链路本地 IPv6 的作用域后缀
 fn dns_address(line: &str) -> Option<String> {
     let value = line.trim();
@@ -443,6 +470,27 @@ mod tests {
             vec!["192.0.2.53", "2001:db8::53", "2001:db8::1"]
         );
         assert!(parse_dns_servers("There aren't any DNS Servers set on Wi-Fi.\n").is_empty());
+    }
+
+    #[test]
+    fn 解析_dns_三态() {
+        assert_eq!(
+            parse_dns_mode("192.0.2.53\n2001:db8::53\n"),
+            DnsMode::Static(vec!["192.0.2.53".to_string(), "2001:db8::53".to_string()])
+        );
+        assert_eq!(
+            parse_dns_mode("There aren't any DNS Servers set on Wi-Fi.\n"),
+            DnsMode::Automatic
+        );
+        assert_eq!(
+            parse_dns_mode("There are no DNS servers set on Ethernet.\n"),
+            DnsMode::Automatic
+        );
+        assert_eq!(parse_dns_mode("  \n"), DnsMode::Automatic);
+        assert_eq!(
+            parse_dns_mode("** Error: The parameters were not valid.\n"),
+            DnsMode::Unknown
+        );
     }
 
     #[test]

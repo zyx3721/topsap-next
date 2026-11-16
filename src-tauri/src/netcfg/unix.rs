@@ -390,13 +390,9 @@ impl NetConfig {
     /// 找到当前默认路由对应的网络服务（Wi-Fi / Ethernet 等）
     #[cfg(target_os = "macos")]
     async fn active_service(&mut self) -> Option<String> {
-        let default_if = self.default_interface().await;
-        let out = shell::run("networksetup", &["-listnetworkserviceorder"]).await;
-        if out.ok {
-            if let Some(ifname) = default_if.as_deref() {
-                if let Some(service) = parse_network_service_order(&out.stdout, ifname) {
-                    return Some(service);
-                }
+        if let Some(ifname) = default_interface_name().await {
+            if let Some(service) = service_for_interface(&ifname).await {
+                return Some(service);
             }
         }
         for candidate in ["Wi-Fi", "Ethernet"] {
@@ -408,16 +404,6 @@ impl NetConfig {
             }
         }
         None
-    }
-
-    #[cfg(target_os = "macos")]
-    async fn default_interface(&self) -> Option<String> {
-        let out = shell::run("route", &["-n", "get", "default"]).await;
-        out.stdout.lines().find_map(|line| {
-            line.trim()
-                .strip_prefix("interface:")
-                .map(|value| value.trim().to_string())
-        })
     }
 
     /// 读取网络服务当前的 DNS；自动获取时返回空列表
@@ -877,6 +863,37 @@ pub async fn purge_hosts_residue() -> Result<bool, NetError> {
         .await
         .map_err(|e| NetError::Hosts(format!("写入 hosts 失败：{e}")))?;
     Ok(true)
+}
+
+/// 读取默认路由接口名
+#[cfg(target_os = "macos")]
+pub(super) async fn default_interface_name() -> Option<String> {
+    let out = shell::run_local("route", &["-n", "get", "default"]).await;
+    let out = if out.ok {
+        out
+    } else {
+        shell::run("route", &["-n", "get", "default"]).await
+    };
+    out.stdout.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("interface:")
+            .map(|value| value.trim().to_string())
+    })
+}
+
+/// 按接口名查找对应的网络服务
+#[cfg(target_os = "macos")]
+pub(super) async fn service_for_interface(ifname: &str) -> Option<String> {
+    let out = shell::run_local("networksetup", &["-listnetworkserviceorder"]).await;
+    let out = if out.ok {
+        out
+    } else {
+        shell::run("networksetup", &["-listnetworkserviceorder"]).await
+    };
+    if !out.ok {
+        return None;
+    }
+    parse_network_service_order(&out.stdout, ifname)
 }
 
 #[cfg(test)]
