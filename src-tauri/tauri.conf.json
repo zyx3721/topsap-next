@@ -47,6 +47,9 @@
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": false
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.0"
     }
   }
 }

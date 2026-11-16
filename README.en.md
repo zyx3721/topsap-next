@@ -124,10 +124,10 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the full protocol and [docs/ARCHITE
 
 ## Quick Start
 
-Local development requires **Rust 1.77+** and **Node.js 20+**. Runtime support covers Windows 7 SP1 / 10 / 11 (x64), macOS (Intel / Apple silicon) and Linux (amd64 / arm64).
+Local development requires **Rust 1.77+** and **Node.js 20+**. Runtime support covers Windows 7 SP1 / 10 / 11 (x64), macOS 13+ (Ventura; Intel / Apple silicon) and Linux (amd64 / arm64).
 
 - **Windows**: uses the Wintun virtual adapter; the installer requests administrator rights on launch.
-- **macOS / Linux**: uses the system TUN device and needs root privileges to create the interface and edit routes/DNS. On macOS the first launch installs a root LaunchDaemon helper after administrator authorization; the GUI stays user-level and uses the helper for the self-test and adapter creation. Cancelling leaves the self-test and connection reporting that the helper is unavailable. On Linux run `sudo ./topsap-client`; launching as a regular user shows a dialog telling you to restart with `sudo /usr/bin/topsap-client`.
+- **macOS / Linux**: uses the system TUN device and needs root privileges to create the interface and edit routes/DNS. macOS 13.0 (Ventura) or later is required. On macOS the first launch installs a root LaunchDaemon helper after administrator authorization; the GUI stays user-level and uses the helper for the self-test and adapter creation. Cancelling leaves the self-test and connection reporting that the helper is unavailable. On Linux run `sudo ./topsap-client`; launching as a regular user shows a dialog telling you to restart with `sudo /usr/bin/topsap-client`.
 
 ```bash
 git clone https://github.com/zyx3721/topsap-next.git
@@ -178,13 +178,15 @@ Grab the artifact from the [GitHub Releases](https://github.com/zyx3721/topsap-n
 | Linux portable amd64 | `topsap-client_<version>_linux_amd64.tar.gz` |
 | Linux portable arm64 | `topsap-client_<version>_linux_arm64.tar.gz` |
 
+> **macOS users**: macOS 13.0 (Ventura) or later is required. Intel Macs use `x64.dmg`; Apple silicon uses `aarch64.dmg`. Older macOS versions cannot run the app because the system WebView is too old; upgrade the OS first.
+
 The installer requests administrator rights on launch (creating the virtual adapter, editing the route table and setting DNS all require it) and supports `/S` silent installation.
 
 > **Windows 7 users**: install WebView2 Runtime 109 and the Visual C++ 2015-2022 Redistributable first. Microsoft no longer updates WebView2 on Windows 7, so newer runtimes may fail to install. On startup the app detects the OS version (6.1) and switches to the Windows 7 compatibility path automatically (netsh address configuration, IPHLPAPI routes with route fallback), leaving Windows 10/11 behaviour untouched.
 
 The portable build runs `topsap-client.exe` directly; keep `resources\wintun.dll` at its relative path, and run it as administrator as well.
 
-> **macOS / Linux users**: the app needs root privileges to create the TUN interface and edit routes. On macOS the first launch requests administrator authorization and installs a root LaunchDaemon helper (`com.topsap.next.helper`); afterwards the GUI runs as the current user. You can also run `sudo open "/Applications/TopSAP Client.app"` as a local fallback. On Linux run `sudo ./topsap-client`; if you launch it as a regular user by double-clicking, the app tells you to use `sudo /usr/bin/topsap-client`. The macOS app is not signed or notarized by Apple — if macOS reports it as damaged on first launch, run `sudo xattr -rd com.apple.quarantine "/Applications/TopSAP Client.app"` to remove the quarantine attribute.
+> **macOS / Linux users**: macOS 13.0 (Ventura) or later is required (the frontend relies on Safari 16.4+; keep the system updated). The app needs root privileges to create the TUN interface and edit routes. On macOS the first launch requests administrator authorization and installs a root LaunchDaemon helper (`com.topsap.next.helper`); afterwards the GUI runs as the current user. You can also run `sudo open "/Applications/TopSAP Client.app"` as a local fallback. On Linux run `sudo ./topsap-client`; if you launch it as a regular user by double-clicking, the app tells you to use `sudo /usr/bin/topsap-client`. The macOS app is not signed or notarized by Apple — if macOS reports it as damaged on first launch, run `sudo xattr -rd com.apple.quarantine "/Applications/TopSAP Client.app"` to remove the quarantine attribute.
 
 ### Option 2: Build from source
 
@@ -267,7 +269,7 @@ Yes. On startup the app reads the real OS version through `RtlGetVersion`; versi
 
 **How do I run it on macOS / Linux?**
 
-macOS and Linux use the system TUN device and need root privileges to create the interface and edit routes. On macOS the first launch requests administrator authorization and installs a root LaunchDaemon helper; the GUI stays user-level. You can also run `sudo open "/Applications/TopSAP Client.app"` as a local fallback. On Linux run `sudo ./topsap-client`; if you double-click it as a regular user, the app prompts you to restart with `sudo /usr/bin/topsap-client`. Linux needs the WebKitGTK 4.1 runtime (`sudo apt-get install libwebkit2gtk-4.1-0` on Ubuntu/Debian). Both platforms use a TUN-based data plane instead of Wintun; the implementation is in place and built by CI, but a full connection regression on real hardware is still pending.
+macOS 13.0 (Ventura) or later is required (the frontend relies on Safari 16.4+; update to the latest Ventura). macOS and Linux use the system TUN device and need root privileges to create the interface and edit routes. On macOS the first launch requests administrator authorization and installs a root LaunchDaemon helper; the GUI stays user-level. You can also run `sudo open "/Applications/TopSAP Client.app"` as a local fallback. On Linux run `sudo ./topsap-client`; if you double-click it as a regular user, the app prompts you to restart with `sudo /usr/bin/topsap-client`. Linux needs the WebKitGTK 4.1 runtime (`sudo apt-get install libwebkit2gtk-4.1-0` on Ubuntu/Debian). Both platforms use a TUN-based data plane instead of Wintun; the implementation is in place and built by CI, but a full connection regression on real hardware is still pending.
 
 **Linux reports `Device or resource busy (os error 16)`?**
 

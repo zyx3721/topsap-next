@@ -124,10 +124,10 @@ TopSAP Client 用 Tauri 2 重写了整条链路：登录、隧道、虚拟网卡
 
 ## 快速开始
 
-本地开发需要 **Rust 1.77+** 与 **Node.js 20+**。运行支持 Windows 7 SP1 / 10 / 11（x64）、macOS（Intel / Apple 芯片）与 Linux（amd64 / arm64）。
+本地开发需要 **Rust 1.77+** 与 **Node.js 20+**。运行支持 Windows 7 SP1 / 10 / 11（x64）、macOS 13+（Ventura，Intel / Apple 芯片）与 Linux（amd64 / arm64）。
 
 - **Windows**：使用 Wintun 虚拟网卡，安装包启动时请求管理员权限。
-- **macOS / Linux**：使用系统 TUN 设备，需要 root 权限才能创建接口、修改路由与 DNS。macOS 首次启动会弹出系统授权框安装 root LaunchDaemon helper；GUI 保持当前用户身份，自检与建卡通过 helper 完成。取消授权则自检与连接会提示 helper 不可用。Linux 使用 `sudo ./topsap-client`；以普通用户启动时会弹窗提示用 `sudo /usr/bin/topsap-client` 重新启动。
+- **macOS / Linux**：使用系统 TUN 设备，需要 root 权限才能创建接口、修改路由与 DNS。macOS 需要 13.0（Ventura）或更高版本；首次启动会弹出系统授权框安装 root LaunchDaemon helper，GUI 保持当前用户身份，自检与建卡通过 helper 完成。取消授权则自检与连接会提示 helper 不可用。Linux 使用 `sudo ./topsap-client`；以普通用户启动时会弹窗提示用 `sudo /usr/bin/topsap-client` 重新启动。
 
 ```bash
 git clone https://github.com/zyx3721/topsap-next.git
@@ -178,13 +178,15 @@ cargo test --lib                          # Rust 单元测试
 | Linux 便携版 amd64（免安装） | `topsap-client_<版本>_linux_amd64.tar.gz` |
 | Linux 便携版 arm64（免安装） | `topsap-client_<版本>_linux_arm64.tar.gz` |
 
+> **macOS 用户**：需要 macOS 13.0（Ventura）或更高版本；Intel 机器下载 `x64.dmg`，Apple 芯片下载 `aarch64.dmg`。旧版 macOS 会因系统 WebView 版本不足无法运行，请先升级系统。
+
 安装包启动时自动请求管理员权限（创建虚拟网卡、修改路由表、设置 DNS 都需要），支持 `/S` 静默安装。
 
 > **Windows 7 用户**：需预先安装 WebView2 Runtime 109 与 Visual C++ 2015-2022 Redistributable。微软已停止 Windows 7 上的 WebView2 更新，更新的运行时版本可能无法安装。程序启动时会检测系统版本（6.1），自动切换到 Win7 兼容路径（配址走 netsh，资源路由优先 IPHLPAPI、失败回退 route），不影响 Win10/11 的原有行为。
 
 便携版解压后直接运行 `topsap-client.exe`，需保持 `resources\wintun.dll` 的相对位置不变，同样需要以管理员身份运行。
 
-> **macOS / Linux 用户**：应用需要 root 权限才能创建 TUN 接口与修改路由。macOS 首次启动会请求管理员授权并安装 root LaunchDaemon helper（`com.topsap.next.helper`），之后 GUI 以普通用户运行；也可以手动执行 `sudo open "/Applications/TopSAP Client.app"` 作为本地回退。Linux 直接 `sudo ./topsap-client`；如果双击以普通用户启动，应用会弹窗提示改用 `sudo /usr/bin/topsap-client`。macOS 应用未做 Apple 签名与公证，首次打开如提示「已损坏」，执行 `sudo xattr -rd com.apple.quarantine "/Applications/TopSAP Client.app"` 移除隔离属性。
+> **macOS / Linux 用户**：macOS 需要 13.0（Ventura）或更高版本（前端依赖 Safari 16.4+，建议保持系统更新）；应用需要 root 权限才能创建 TUN 接口与修改路由。macOS 首次启动会请求管理员授权并安装 root LaunchDaemon helper（`com.topsap.next.helper`），之后 GUI 以普通用户运行；也可以手动执行 `sudo open "/Applications/TopSAP Client.app"` 作为本地回退。Linux 直接 `sudo ./topsap-client`；如果双击以普通用户启动，应用会弹窗提示改用 `sudo /usr/bin/topsap-client`。macOS 应用未做 Apple 签名与公证，首次打开如提示「已损坏」，执行 `sudo xattr -rd com.apple.quarantine "/Applications/TopSAP Client.app"` 移除隔离属性。
 
 ### 方式二：本地源码构建
 
@@ -267,7 +269,7 @@ npm run tauri build
 
 **macOS / Linux 怎么运行？**
 
-macOS 与 Linux 使用系统 TUN 设备，需要 root 权限创建接口与修改路由。macOS 首次启动会请求管理员授权并安装 root LaunchDaemon helper，GUI 保持用户身份；也可手动执行 `sudo open "/Applications/TopSAP Client.app"` 作为本地回退。Linux 执行 `sudo ./topsap-client`；如果双击以普通用户启动，应用会弹窗提示改用 `sudo /usr/bin/topsap-client`。Linux 需要 WebKitGTK 4.1 运行时（Ubuntu/Debian: `sudo apt-get install libwebkit2gtk-4.1-0`）。两者的数据面基于 TUN，不依赖 Wintun 驱动；当前版本已实现并纳入 CI 构建，尚未在真机完成完整连接回归。
+macOS 需要 13.0（Ventura）或更高版本（前端依赖 Safari 16.4+，建议更新到最新 Ventura）；macOS 与 Linux 使用系统 TUN 设备，需要 root 权限创建接口与修改路由。macOS 首次启动会请求管理员授权并安装 root LaunchDaemon helper，GUI 保持用户身份；也可手动执行 `sudo open "/Applications/TopSAP Client.app"` 作为本地回退。Linux 执行 `sudo ./topsap-client`；如果双击以普通用户启动，应用会弹窗提示改用 `sudo /usr/bin/topsap-client`。Linux 需要 WebKitGTK 4.1 运行时（Ubuntu/Debian: `sudo apt-get install libwebkit2gtk-4.1-0`）。两者的数据面基于 TUN，不依赖 Wintun 驱动；当前版本已实现并纳入 CI 构建，尚未在真机完成完整连接回归。
 
 **Linux 连接时报 `Device or resource busy (os error 16)`？**
 

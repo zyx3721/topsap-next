@@ -43,8 +43,10 @@
 | --- | --- | --- |
 | Windows 11 / 10 | 主路径，已验证 | 配址使用 IPHLPAPI，失败回退 `netsh`；资源路由使用 IPHLPAPI，失败回退 `route` |
 | Windows 7 SP1 | 兼容路径 | 运行时检测版本 6.1；配址走 `netsh`，资源路由优先 IPHLPAPI、失败回退 `route`；需 WebView2 109 与 VC++ 运行库 |
-| macOS Intel / Apple 芯片 | 已实现，待真机验证 | 系统 utun + `route` / `ifconfig`，需要 root；应用未签名与公证 |
+| macOS 13+（Ventura）Intel / Apple 芯片 | 已实现，待真机验证 | 系统 utun + `route` / `ifconfig`，需要 root；前端依赖 Safari 16.4+；应用未签名与公证 |
 | Linux amd64 / arm64 | 已实现，待真机验证 | `/dev/net/tun` + `ip route`，需要 root |
+
+> macOS 最低 13.0（Ventura）：Tauri 官方最低为 10.15，但 wry 0.56+ 在 10.13 上会因 `drawsBackground` KVC 崩溃，且前端 Tailwind CSS 4 需要 Safari 16.4+；`bundle.macOS.minimumSystemVersion` 固定为 `13.0`，安装与构建均按此版本约束。
 
 ### 2.3 非目标
 

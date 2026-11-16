@@ -274,7 +274,8 @@ jobs:
 
           ### ⚠️ 平台与权限说明
           - Windows：安装包启动时请求管理员权限；Windows 7 需预装 WebView2 109 与 VC++ 运行库。
-          - macOS / Linux：需要 root 或 sudo 运行以创建 TUN 接口与修改路由；应用未做 Apple 签名与公证。
+          - macOS：需要 macOS 13.0（Ventura）或更高版本；首次启动安装 root helper，应用未做 Apple 签名与公证。
+          - Linux：需要 root 或 sudo 运行以创建 TUN 接口与修改路由。
           - 网关证书普遍自签或已过期，客户端按协议要求跳过证书链校验且不发送 SNI。请仅在可信网络中使用，并通过其他渠道核对网关地址。
           EOF
 

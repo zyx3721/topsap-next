@@ -21,6 +21,7 @@
 
 ### 变更
 
+- macOS 最低系统版本定为 13.0（Ventura）：设置 `bundle.macOS.minimumSystemVersion` 并同步文档；此前按 Tauri 默认 10.13 声明最低版本，但 wry 0.56+ 在 10.13 上会因 `drawsBackground` KVC 崩溃，且前端 Tailwind 4 需要 Safari 16.4+；旧系统现在会在安装/启动前得到明确的版本提示，而不是启动后意外退出
 - `netcfg/windows.rs` 拆分为 `netcfg/windows/{mod,address}.rs`，地址配置 FFI 独立成子模块，行为不变
 - `update.rs` 拆分为 `update/{mod,download,install}.rs`，版本检查、下载与平台安装分文件维护
 - Windows 7 资源路由对齐官方客户端：由直接 `route add` 改为优先 IPHLPAPI `CreateIpForwardEntry`（`GetIpForwardTable` 查重与回读），失败再回退 `route add`；配址仍保持 `netsh`，不引入 PowerShell
