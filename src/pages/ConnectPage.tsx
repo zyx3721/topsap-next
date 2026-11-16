@@ -234,7 +234,10 @@ export function ConnectPage({
 
   const connected = engine.phase === "connected";
   const busy = isBusyPhase(engine.phase) || connecting || probingLines;
-  const dnsGate = dnsPreflight.startupChecking || dnsPreflight.applying;
+  const dnsGate =
+    dnsPreflight.startupChecking ||
+    dnsPreflight.applying ||
+    dnsPreflight.target !== null;
   const connectDisabled = busy || connected || dnsGate;
   const dnsPhaseBusy = engine.phase !== "idle" && engine.phase !== "failed";
   const dnsDisabled = dnsPhaseBusy || dnsPreflight.checking || connecting;
@@ -508,6 +511,10 @@ export function ConnectPage({
 
             {dnsPreflight.startupChecking ? (
               <p className="text-[11px] text-faint">{t("正在检查本机 DNS…")}</p>
+            ) : dnsPreflight.target ? (
+              <p className="text-[11px] text-faint">
+                {t("请先改为自动获取本机 DNS 后再连接")}
+              </p>
             ) : null}
 
             <div className="flex items-center justify-between gap-3 pt-1">

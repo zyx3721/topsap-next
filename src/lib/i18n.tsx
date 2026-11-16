@@ -518,6 +518,8 @@ const EN: Record<string, string> = {
   "连接进行中，请稍后再修改 DNS": "Wait for the connection attempt to finish",
   "启动自动连接已暂停；改为自动获取后请手动点击「连接」。":
     "Auto connect on launch is paused; set DNS to automatic, then click Connect.",
+  "请先改为自动获取本机 DNS 后再连接":
+    "Set local DNS to automatic before connecting.",
   "已将本机 DNS 改为自动获取": "Local DNS is now set to automatic",
   // 自检
   "提示": "Notice",

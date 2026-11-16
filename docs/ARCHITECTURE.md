@@ -399,7 +399,7 @@ type WintunCreateAdapter = unsafe extern "system" fn(*const u16, *const u16, *co
 - 预检 5 秒超时；超时或检测失败都返回 `DnsInspectionDto.error` 并释放门禁，不阻塞界面
 - Windows：`GetIpForwardTable` 取默认路由，`GetAdaptersAddresses` 取网卡 GUID/连接名，读 `Tcpip` / `Tcpip6` 的 `NameServer` / `NameServerList` 判断手动 DNS，`netsh ... source=dhcp` 修改并回读注册表
 - macOS：默认接口映射到网络服务，`networksetup -getdnsservers` 三态判断（自动/手动/未知），`networksetup setdnsservers <service> Empty` 修改并回读
-- 前端 `useDnsPreflight` 的 `startupChecking` 在首次预检结束前禁用连接与忘记密码按钮；手动「重新检查」只禁用卡片按钮，不再禁用连接
+- 前端 `useDnsPreflight` 的 `startupChecking` 在首次预检结束前禁用连接与忘记密码按钮；检测到手动 DNS 时继续禁用，直到改为自动获取成功；手动「重新检查」只禁用卡片按钮
 - `autostart` 仅在预检未发现手动 DNS 时继续自动连接；发现手动 DNS 时写日志并暂停，用户改为自动获取后需手动点击「连接」
 - 已连接/连接中禁止修改 DNS；后端 `Engine::ensure_dns_change_allowed()` 再做一次状态校验
 - 修改成功后保持自动获取，断开不恢复；Windows 不改 Wintun DNS 账本，macOS 连接中的 `set_dns` 会以 `Empty` 作为原值记账并在断开时写回 `Empty`
