@@ -37,7 +37,7 @@ jobs:
             portableOS: windows
             portableArch: arm64
             jobName: Windows arm64 打包
-          - os: macos-15
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             bundles: dmg
             artifact: macos-amd64
