@@ -72,7 +72,7 @@ mod tests {
         assert!(allowed_networksetup(&args(&[
             "-setproxybypassdomains",
             "Wi-Fi",
-            "*.sunline.cn",
+            "*.example.com",
             "198.51.100.1"
         ])));
         assert!(allowed_networksetup(&args(&[

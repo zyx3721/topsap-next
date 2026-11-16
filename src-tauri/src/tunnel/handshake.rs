@@ -241,15 +241,15 @@ mod tests {
     #[test]
     fn 解析_json_成功回应() {
         let parsed = json(
-            r#"{"req_packet":1,"resp_packet":{"vip_v4":"10.8.0.10","vip_mask":"255.255.248.0","dns1_v4":"10.22.50.5","dns2_v4":"10.22.50.6"}}"#,
+            r#"{"req_packet":1,"resp_packet":{"vip_v4":"198.18.0.10","vip_mask":"255.255.248.0","dns1_v4":"198.51.100.5","dns2_v4":"198.51.100.6"}}"#,
         );
         let ParsedHandshake::Ok(info) = parsed else {
             panic!("应解析为成功回应");
         };
-        assert_eq!(info.vip, Some("10.8.0.10".parse().unwrap()));
+        assert_eq!(info.vip, Some("198.18.0.10".parse().unwrap()));
         assert_eq!(info.mask, Some("255.255.248.0".parse().unwrap()));
-        assert_eq!(info.dns1, Some("10.22.50.5".parse().unwrap()));
-        assert_eq!(info.dns2, Some("10.22.50.6".parse().unwrap()));
+        assert_eq!(info.dns1, Some("198.51.100.5".parse().unwrap()));
+        assert_eq!(info.dns2, Some("198.51.100.6".parse().unwrap()));
         assert_eq!(info.req_packet, Some(1));
     }
 
@@ -287,7 +287,7 @@ mod tests {
         let mut payload = vec![0u8; BINARY_MIN_LEN];
         payload[0..4].copy_from_slice(&1u32.to_be_bytes());
         payload[BINARY_VIP_OFFSET..BINARY_VIP_OFFSET + 4]
-            .copy_from_slice(&u32::from("172.21.8.20".parse::<Ipv4Addr>().unwrap()).to_be_bytes());
+            .copy_from_slice(&u32::from("198.18.0.20".parse::<Ipv4Addr>().unwrap()).to_be_bytes());
         payload[BINARY_MASK_OFFSET..BINARY_MASK_OFFSET + 4].copy_from_slice(
             &u32::from("255.255.248.0".parse::<Ipv4Addr>().unwrap()).to_be_bytes(),
         );
@@ -295,7 +295,7 @@ mod tests {
         let ParsedHandshake::Ok(info) = parsed else {
             panic!("应解析为成功回应");
         };
-        assert_eq!(info.vip, Some("172.21.8.20".parse().unwrap()));
+        assert_eq!(info.vip, Some("198.18.0.20".parse().unwrap()));
         assert_eq!(info.mask, Some("255.255.248.0".parse().unwrap()));
     }
 
