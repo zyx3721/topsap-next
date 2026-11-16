@@ -223,7 +223,7 @@ TopSAP-Next/
 │       ├── update/{mod,download,install}.rs # 版本检查、更新下载与多平台安装
 │       ├── auth/{mod,client,error,http,json,model}.rs
 │       ├── protocol/{mod,frame,parser}.rs
-│       ├── tunnel/mod.rs
+│       ├── tunnel/{mod,handshake}.rs # TLS 长连接、帧收发与握手回应解析
 │       ├── tun/{mod,ffi,device,unix,selftest}.rs
 │       ├── netcfg/{mod,macos_text,macos_networksetup,routes,hosts,shell,unix}.rs
 │       ├── netcfg/windows/{mod,address}.rs
@@ -321,7 +321,7 @@ TLS 建连（不校验证书、不发 SNI）
 | --- | --- | --- |
 | `auth` | HTTP 登录三步骤、伪 JSON 解析、错误码映射 | `AuthClient`, `LoginConfig`, `AuthError` |
 | `protocol` | 帧编解码、流式拆帧、常量 | `Frame`, `FrameEncoder`, `FrameParser` |
-| `tunnel` | TLS 长连接、握手状态机、上下行计数 | `Tunnel`, `TunnelEvent`, `NoVerifyVerifier` |
+| `tunnel` | TLS 长连接、握手状态机、握手回应与错误通告解析、上下行计数 | `TunnelHandle`, `TunnelEvent`, `HandshakeInfo` |
 | `tun` | wintun FFI 绑定、Unix 非阻塞 TUN、读循环、写包、自检与残留清理 | `WintunApi`, `TunDevice`, `SelfTestReport` |
 | `netcfg` | 网卡地址、路由注入/回读、DNS、旧版 hosts 残留清理 | `NetConfig`, `RouteEntry`, `CleanupLedger` |
 | `session` | 生命周期编排、事件广播、自动重连、数据面健康检查与自愈 | `Engine`, `EngineState`, `EngineEvent`, `HealthTracker` |

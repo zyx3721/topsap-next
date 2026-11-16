@@ -33,6 +33,25 @@ function localizeReason(reason: string): string {
   return reason;
 }
 
+const GATEWAY_REASONS: Array<[string, string]> = [
+  ["网关判定会话 ID 无效", "the gateway rejected the session ID"],
+  ["网关获取虚拟地址池失败", "the gateway failed to obtain the virtual address pool"],
+  ["网关获取 ACL 规则失败", "the gateway failed to obtain ACL rules"],
+  ["账号已被网关踢下线", "the account was kicked offline by the gateway"],
+  ["网关获取 DHCP 地址失败", "the gateway failed to obtain a DHCP address"],
+  ["网关判定客户端连接超时", "the gateway reported a client connection timeout"],
+  ["网关获取 DNS 域名列表失败", "the gateway failed to obtain the DNS list"],
+  ["重连时的虚拟地址无效", "the virtual address was invalid on reconnect"],
+  ["网关繁忙，暂时无法处理请求", "the gateway is busy and cannot handle the request"],
+  ["网关发生集群切换", "the gateway cluster switched"],
+  ["登录账号受限，请使用已绑定的账号", "login is restricted to bound accounts"],
+];
+
+function localizeGatewayReason(reason: string): string {
+  const hit = GATEWAY_REASONS.find(([chinese]) => chinese === reason);
+  return hit ? hit[1] : reason;
+}
+
 const WIN32_HINTS: Array<[string, string]> = [
   ["拒绝访问，需要管理员权限运行", "access denied; administrator privileges are required"],
   ["无法连接到设备，驱动可能未加载", "cannot connect to the device; the driver may not be loaded"],
@@ -76,6 +95,19 @@ export function localizeError(message: string): string {
   text = text.replace(
     /^TLS 握手失败：(.+)$/,
     (_match, reason: string) => `TLS handshake failed: ${localizeReason(reason)}`,
+  );
+  text = text.replace(
+    /^网关拒绝建立隧道：(.+)（错误码 (\d+)）$/,
+    (_match, reason: string, code: string) =>
+      `The gateway refused to establish the tunnel: ${localizeGatewayReason(reason)} (error ${code}).`,
+  );
+  text = text.replace(
+    /^网关拒绝建立隧道（错误码 (\d+)）$/,
+    "The gateway refused to establish the tunnel (error $1).",
+  );
+  text = text.replace(
+    /^网关未分配虚拟地址（地址或掩码为 0），请检查网关地址池$/,
+    "The gateway did not assign a virtual address (the address or mask is 0). Check the gateway address pool.",
   );
   text = text.replace(
     /^已取消连接：检测到路由冲突$/,

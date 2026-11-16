@@ -43,6 +43,22 @@ describe("localizeError", () => {
     );
   });
 
+  it("翻译网关拒绝隧道与地址分配失败", () => {
+    expect(
+      localizeError("网关拒绝建立隧道：登录账号受限，请使用已绑定的账号（错误码 57）"),
+    ).toBe(
+      "The gateway refused to establish the tunnel: login is restricted to bound accounts (error 57).",
+    );
+    expect(localizeError("网关拒绝建立隧道（错误码 44）")).toBe(
+      "The gateway refused to establish the tunnel (error 44).",
+    );
+    expect(
+      localizeError("网关未分配虚拟地址（地址或掩码为 0），请检查网关地址池"),
+    ).toBe(
+      "The gateway did not assign a virtual address (the address or mask is 0). Check the gateway address pool.",
+    );
+  });
+
   it("翻译登录时要求改密的提示", () => {
     expect(localizeError("登录用户密码有效期已到，请修改密码")).toBe(
       "Your password has expired. Change it to continue.",

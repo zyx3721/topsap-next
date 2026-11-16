@@ -25,6 +25,11 @@ use crate::auth::LoginSession;
 use crate::protocol::{self, Frame, FrameParser, MSG_ACK, MSG_DATA};
 use crate::tls;
 
+mod handshake;
+
+pub use handshake::HandshakeInfo;
+use handshake::ParsedHandshake;
+
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
 const OUTBOUND_QUEUE: usize = 512;
@@ -43,6 +48,9 @@ pub enum TunnelError {
     AckTimeout(u64),
     #[error("隧道握手失败：{0}")]
     Handshake(String),
+    /// 网关通过握手回应或错误通告明确拒绝，不能按普通断线自动重连
+    #[error("{0}")]
+    Rejected(String),
     #[error("隧道读写失败：{0}")]
     Io(String),
     #[error("{0}")]
@@ -58,6 +66,8 @@ pub enum TunnelEvent {
     Data(Vec<u8>),
     /// 非数据帧（控制/心跳），仅用于日志
     Control { msg_type: u32, payload: Vec<u8> },
+    /// 网关明确拒绝隧道，必须断开而不是自动重连
+    Rejected { reason: String },
     /// 连接结束
     Closed { reason: String },
 }
@@ -78,6 +88,7 @@ pub struct TunnelHandle {
     bytes_down: Arc<AtomicU64>,
     packets_up: Arc<AtomicU64>,
     packets_down: Arc<AtomicU64>,
+    handshake: Option<HandshakeInfo>,
 }
 
 impl TunnelHandle {
@@ -92,6 +103,11 @@ impl TunnelHandle {
 
     pub fn is_cancelled(&self) -> bool {
         self.cancel.is_cancelled()
+    }
+
+    /// 网关握手回应中解析到的隧道侧网络参数；旧网关可能不返回
+    pub fn handshake(&self) -> Option<&HandshakeInfo> {
+        self.handshake.as_ref()
     }
 
     pub fn stats(&self) -> TunnelStats {
@@ -131,9 +147,9 @@ async fn finish_open(
     events: mpsc::Sender<TunnelEvent>,
     parent: CancellationToken,
 ) -> Result<TunnelHandle, TunnelError> {
-    let (parser, prefetched) = tokio::time::timeout(
+    let (parser, prefetched, handshake) = tokio::time::timeout(
         HANDSHAKE_TIMEOUT,
-        handshake(&mut stream, &session.session_id),
+        run_handshake(&mut stream, &session.session_id),
     )
     .await
     .map_err(|_| TunnelError::AckTimeout(HANDSHAKE_TIMEOUT.as_secs()))??;
@@ -174,13 +190,14 @@ async fn finish_open(
         bytes_down,
         packets_up,
         packets_down,
+        handshake,
     })
 }
 
-async fn handshake(
+async fn run_handshake(
     stream: &mut TlsStream<TcpStream>,
     session_id: &str,
-) -> Result<(FrameParser, Vec<Frame>), TunnelError> {
+) -> Result<(FrameParser, Vec<Frame>, Option<HandshakeInfo>), TunnelError> {
     stream
         .write_all(CONNECT_PREFACE.as_bytes())
         .await
@@ -198,6 +215,8 @@ async fn handshake(
     let mut parser = FrameParser::new();
     let mut buf = vec![0u8; 16 * 1024];
     let mut ack_seen = false;
+    let mut info: Option<HandshakeInfo> = None;
+    let mut before_ack = Vec::new();
     let mut after_ack = Vec::new();
 
     while !ack_seen {
@@ -213,8 +232,46 @@ async fn handshake(
         for frame in parser.push(&buf[..n])? {
             if ack_seen {
                 after_ack.push(frame);
-            } else if frame.msg_type == MSG_ACK {
+                continue;
+            }
+            if frame.msg_type == MSG_ACK {
                 ack_seen = true;
+                match handshake::parse_response(&frame.payload) {
+                    ParsedHandshake::GatewayError { message, .. } => {
+                        return Err(TunnelError::Rejected(message));
+                    }
+                    ParsedHandshake::Ok(parsed) => info = Some(parsed),
+                    ParsedHandshake::Unknown => {}
+                }
+                continue;
+            }
+            if let Some(reason) = handshake::classify_error(&frame.payload) {
+                return Err(TunnelError::Rejected(reason));
+            }
+            match handshake::parse_response(&frame.payload) {
+                ParsedHandshake::Ok(parsed) => {
+                    if info.is_none() {
+                        info = Some(parsed);
+                    }
+                    before_ack.push(frame);
+                }
+                ParsedHandshake::GatewayError { message, .. } => {
+                    return Err(TunnelError::Rejected(message));
+                }
+                ParsedHandshake::Unknown => before_ack.push(frame),
+            }
+        }
+    }
+
+    before_ack.append(&mut after_ack);
+    let prefetched = before_ack;
+    for frame in &prefetched {
+        if let Some(reason) = handshake::classify_error(&frame.payload) {
+            return Err(TunnelError::Rejected(reason));
+        }
+        if info.is_none() {
+            if let ParsedHandshake::Ok(parsed) = handshake::parse_response(&frame.payload) {
+                info = Some(parsed);
             }
         }
     }
@@ -228,7 +285,7 @@ async fn handshake(
         .await
         .map_err(|e| TunnelError::Io(format!("刷新通知帧失败：{e}")))?;
 
-    Ok((parser, after_ack))
+    Ok((parser, prefetched, info))
 }
 
 fn spawn_reader(
@@ -296,6 +353,10 @@ async fn handle_frame(
         bytes_down.fetch_add(frame.payload.len() as u64, Ordering::Relaxed);
         packets_down.fetch_add(1, Ordering::Relaxed);
         return events.send(TunnelEvent::Data(frame.payload)).await.is_ok();
+    }
+
+    if let Some(reason) = handshake::classify_error(&frame.payload) {
+        return events.send(TunnelEvent::Rejected { reason }).await.is_ok();
     }
 
     events

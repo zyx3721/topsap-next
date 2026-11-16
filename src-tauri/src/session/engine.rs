@@ -170,6 +170,12 @@ impl Drop for ReconnectGuard<'_> {
     }
 }
 
+/// 单次重连失败；网关明确拒绝时不再继续重试
+enum ReopenError {
+    Retry(String),
+    Fatal(String),
+}
+
 impl Engine {
     pub fn new(app: AppHandle, dll_path: PathBuf) -> Arc<Self> {
         Arc::new(Self {
@@ -1287,6 +1293,7 @@ impl Engine {
                 return Err(err.to_string());
             }
         };
+        self.log_handshake_mismatch(session, &tunnel);
         self.log("隧道 TLS 已建立");
 
         self.set_phase(Phase::Configuring, "正在注入路由");
@@ -1531,6 +1538,35 @@ impl Engine {
         tokio::spawn(async move { engine.handle_tunnel_closed(reason, generation).await });
     }
 
+    async fn on_gateway_rejected(self: &Arc<Self>, reason: String) {
+        self.log(reason.clone());
+        let _ = self.teardown().await;
+        self.lock().abnormal_disconnect = true;
+        self.set_phase(Phase::Failed, reason);
+    }
+
+    fn log_handshake_mismatch(&self, session: &LoginSession, tunnel: &TunnelHandle) {
+        let Some(info) = tunnel.handshake() else {
+            return;
+        };
+        if let Some(vip) = info.vip {
+            if vip.to_string() != session.vip {
+                self.log(format!(
+                    "警告：隧道侧虚拟 IP {vip} 与登录响应 {} 不一致，仍按登录响应配置",
+                    session.vip
+                ));
+            }
+        }
+        if let Some(mask) = info.mask {
+            if mask.to_string() != session.vip_mask {
+                self.log(format!(
+                    "警告：隧道侧掩码 {mask} 与登录响应 {} 不一致",
+                    session.vip_mask
+                ));
+            }
+        }
+    }
+
     async fn handle_tunnel_closed(self: Arc<Self>, reason: String, generation: u64) {
         {
             let inner = self.lock();
@@ -1611,7 +1647,11 @@ impl Engine {
                     self.log("新隧道已建立，但数据面未恢复");
                     self.set_phase(Phase::Reconnecting, "数据面未恢复，继续重试");
                 }
-                Err(err) => self.log(format!("重连失败：{err}")),
+                Err(ReopenError::Retry(err)) => self.log(format!("重连失败：{err}")),
+                Err(ReopenError::Fatal(err)) => {
+                    self.on_gateway_rejected(err).await;
+                    return;
+                }
             }
         }
 
@@ -1736,7 +1776,11 @@ impl Engine {
                     self.log("新隧道已建立，但数据面未恢复");
                     self.set_phase(Phase::Reconnecting, "数据面未恢复，继续重试");
                 }
-                Err(err) => self.log(format!("数据面恢复失败：{err}")),
+                Err(ReopenError::Retry(err)) => self.log(format!("数据面恢复失败：{err}")),
+                Err(ReopenError::Fatal(err)) => {
+                    self.on_gateway_rejected(err).await;
+                    return;
+                }
             }
         }
 
@@ -1879,11 +1923,9 @@ impl Engine {
         session: &LoginSession,
         cancel: &CancellationToken,
         ip: IpAddr,
-    ) -> Result<(TunnelHandle, mpsc::Receiver<TunnelEvent>), String> {
+    ) -> Result<(TunnelHandle, mpsc::Receiver<TunnelEvent>), tunnel::TunnelError> {
         let (event_tx, event_rx) = mpsc::channel::<TunnelEvent>(tunnel::EVENT_QUEUE);
-        let tunnel = tunnel::open_at(session, event_tx, cancel.clone(), ip)
-            .await
-            .map_err(|err| err.to_string())?;
+        let tunnel = tunnel::open_at(session, event_tx, cancel.clone(), ip).await?;
         Ok((tunnel, event_rx))
     }
 
@@ -1891,16 +1933,24 @@ impl Engine {
         self: &Arc<Self>,
         session: &LoginSession,
         cancel: &CancellationToken,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, ReopenError> {
         let tun = { self.lock().tun.clone() };
         let Some(tun) = tun else {
-            return Err("虚拟网卡已释放".to_string());
+            return Err(ReopenError::Retry("虚拟网卡已释放".to_string()));
         };
 
-        let gateway_ip = self.reconnect_gateway_ip(session).await?;
-        self.repair_network(session, gateway_ip).await?;
+        let gateway_ip = self
+            .reconnect_gateway_ip(session)
+            .await
+            .map_err(ReopenError::Retry)?;
+        self.repair_network(session, gateway_ip)
+            .await
+            .map_err(ReopenError::Retry)?;
 
         let mut opened = self.open_tunnel_at(session, cancel, gateway_ip).await;
+        if let Err(tunnel::TunnelError::Rejected(message)) = &opened {
+            return Err(ReopenError::Fatal(message.clone()));
+        }
         if opened.is_err() {
             if let Ok(resolved) =
                 tls::resolve_ip_with_timeout(&session.gateway, GATEWAY_RESOLVE_TIMEOUT).await
@@ -1911,7 +1961,11 @@ impl Engine {
                 }
             }
         }
-        let (tunnel, event_rx) = opened?;
+        let (tunnel, event_rx) = opened.map_err(|err| match err {
+            tunnel::TunnelError::Rejected(message) => ReopenError::Fatal(message),
+            other => ReopenError::Retry(other.to_string()),
+        })?;
+        self.log_handshake_mismatch(session, &tunnel);
 
         let generation = {
             let mut inner = self.lock();
@@ -1931,16 +1985,16 @@ impl Engine {
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         if cancel.is_cancelled() {
-            return Err("连接已取消".to_string());
+            return Err(ReopenError::Retry("连接已取消".to_string()));
         }
         if self.closed_generation.load(Ordering::SeqCst) == generation {
-            return Err("新隧道建立后立即断开".to_string());
+            return Err(ReopenError::Retry("新隧道建立后立即断开".to_string()));
         }
         self.set_phase(Phase::Connected, "");
         self.uplink_drops.store(0, Ordering::Relaxed);
         if self.closed_generation.load(Ordering::SeqCst) == generation {
             self.set_phase(Phase::Reconnecting, "正在重连");
-            return Err("新隧道建立后立即断开".to_string());
+            return Err(ReopenError::Retry("新隧道建立后立即断开".to_string()));
         }
         Ok(generation)
     }
@@ -1974,6 +2028,12 @@ fn spawn_tunnel_events(
                 TunnelEvent::Closed { reason } => {
                     if let Some(engine) = engine.upgrade() {
                         engine.on_tunnel_closed(reason, generation);
+                    }
+                    return;
+                }
+                TunnelEvent::Rejected { reason } => {
+                    if let Some(engine) = engine.upgrade() {
+                        tokio::spawn(async move { engine.on_gateway_rejected(reason).await });
                     }
                     return;
                 }
