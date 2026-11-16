@@ -336,7 +336,7 @@ TLS 建连（不校验证书、不发 SNI）
 | `update` | 版本检查、流式下载、Windows/macOS 安装编排与更新临时目录清理 | `UpdateInfo`, `UpdateProgress`, `check()` |
 | `settings` | 应用设置读写与校验 | `AppSettings` |
 | `proxy_bypass` | Windows / macOS / Linux 系统代理绕过列表同步；macOS 经 helper 执行 `networksetup` | `ProxyBypassStatus` |
-| `autostart` | 启动时按设置自动连接：校验连接配置、账号与已保存密码，等待 DNS 预检结束后再组装表单并连接 | `schedule()`, `build_form()` |
+| `autostart` | 启动时按设置自动连接：校验连接配置、账号与已保存密码，等待 DNS 预检结束；检测到手动 DNS 时暂停，等待用户处理后手动连接 | `schedule()`, `build_form()` |
 | `route_policy` | 隧道路由生效范围：网段归一化、关闭列表清洗、注入前过滤；每次登录缓存完整路由供离线勾选 | `RouteRuleDto`, `RoutePolicySnapshot` |
 | `secret_store` | 跨平台 keyring（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）+ AES-GCM 回退 | `SecretStore` |
 | `helper` | macOS root LaunchDaemon：创建 utun、执行 ifconfig/route 白名单命令 | `helper::run()` |
@@ -400,6 +400,7 @@ type WintunCreateAdapter = unsafe extern "system" fn(*const u16, *const u16, *co
 - Windows：`GetIpForwardTable` 取默认路由，`GetAdaptersAddresses` 取网卡 GUID/连接名，读 `Tcpip` / `Tcpip6` 的 `NameServer` / `NameServerList` 判断手动 DNS，`netsh ... source=dhcp` 修改并回读注册表
 - macOS：默认接口映射到网络服务，`networksetup -getdnsservers` 三态判断（自动/手动/未知），`networksetup setdnsservers <service> Empty` 修改并回读
 - 前端 `useDnsPreflight` 的 `startupChecking` 在首次预检结束前禁用连接与忘记密码按钮；手动「重新检查」只禁用卡片按钮，不再禁用连接
+- `autostart` 仅在预检未发现手动 DNS 时继续自动连接；发现手动 DNS 时写日志并暂停，用户改为自动获取后需手动点击「连接」
 - 已连接/连接中禁止修改 DNS；后端 `Engine::ensure_dns_change_allowed()` 再做一次状态校验
 - 修改成功后保持自动获取，断开不恢复；Windows 不改 Wintun DNS 账本，macOS 连接中的 `set_dns` 会以 `Empty` 作为原值记账并在断开时写回 `Empty`
 
