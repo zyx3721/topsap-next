@@ -522,8 +522,6 @@ const EN: Record<string, string> = {
   "正在检查本机 DNS…": "Checking local DNS…",
   "当前已连接，请先断开连接后再修改 DNS": "Disconnect before changing DNS",
   "连接进行中，请稍后再修改 DNS": "Wait for the connection attempt to finish",
-  "请先改为自动获取本机 DNS 后再连接":
-    "Set local DNS to automatic before connecting.",
   "已将本机 DNS 改为自动获取": "Local DNS is now set to automatic",
   // 自检
   "提示": "Notice",

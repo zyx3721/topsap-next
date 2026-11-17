@@ -28,7 +28,6 @@ import {
 import type { DnsPreflightController } from "../hooks/useDnsPreflight";
 import { isBusyPhase, type EngineView } from "../hooks/useEngineEvents";
 import { api } from "../lib/api";
-import { isDnsGateActive } from "../lib/dnsGate";
 import { firstLine, isValidGateway, isValidPort } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { queryKeys } from "../lib/query";
@@ -235,14 +234,7 @@ export function ConnectPage({
 
   const connected = engine.phase === "connected";
   const busy = isBusyPhase(engine.phase) || connecting || probingLines;
-  const manualDns = dnsPreflight.target !== null;
-  const dnsGate = isDnsGateActive({
-    startupChecking: dnsPreflight.startupChecking,
-    applying: dnsPreflight.applying,
-    hasManualDns: manualDns,
-    skipped: dnsPreflight.skipped,
-  });
-  const connectDisabled = busy || connected || dnsGate;
+  const connectDisabled = busy || connected;
   const dnsPhaseBusy = engine.phase !== "idle" && engine.phase !== "failed";
   const dnsDisabled = dnsPhaseBusy || dnsPreflight.checking || connecting;
   const dnsDisabledHint = dnsPreflight.checking
@@ -513,10 +505,6 @@ export function ConnectPage({
 
             {dnsPreflight.startupChecking ? (
               <p className="text-[11px] text-faint">{t("正在检查本机 DNS…")}</p>
-            ) : manualDns && !dnsPreflight.skipped ? (
-              <p className="text-[11px] text-faint">
-                {t("请先改为自动获取本机 DNS 后再连接")}
-              </p>
             ) : null}
 
             <div className="flex items-center justify-between gap-3 pt-1">
@@ -524,7 +512,7 @@ export function ConnectPage({
                 <button
                   type="button"
                   onClick={() => setForgotOpen(true)}
-                  disabled={busy || dnsGate}
+                  disabled={busy}
                   className="text-[11px] font-medium text-accent hover:underline disabled:opacity-50"
                 >
                   {t("忘记密码？")}

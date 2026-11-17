@@ -188,7 +188,7 @@ TopSAP-Next/
 │   ├── hooks/
 │   │   ├── useEngineEvents.ts   # 事件订阅
 │   │   ├── useConnection.ts     # 连接 mutation
-│   │   └── useDnsPreflight.ts   # 启动 DNS 预检状态与按钮门禁
+│   │   └── useDnsPreflight.ts   # 启动 DNS 预检状态与告警卡片
 │   ├── pages/
 │   │   ├── ConnectPage.tsx
 │   │   ├── DiagnosticsPage.tsx
@@ -219,7 +219,7 @@ TopSAP-Next/
 │       ├── proxy_bypass.rs      # 三平台系统代理绕过列表
 │       ├── route_policy.rs      # 隧道路由生效范围与路由缓存
 │       ├── autostart.rs         # 启动自动连接（不等待 DNS 预检）
-│       ├── dns_preflight.rs     # 启动 DNS 预检缓存、5 秒超时与门禁结果
+│       ├── dns_preflight.rs     # 启动 DNS 预检缓存与 5 秒超时
 │       ├── secret_store.rs
 │       ├── helper.rs            # macOS root helper：TUN 创建与白名单命令
 │       ├── privileged.rs        # macOS helper 客户端与 LaunchDaemon 安装
@@ -330,7 +330,7 @@ TLS 建连（不校验证书、不发 SNI）
 | `tunnel` | TLS 长连接、握手状态机、握手回应与错误通告解析、上下行计数 | `TunnelHandle`, `TunnelEvent`, `HandshakeInfo` |
 | `tun` | wintun FFI 绑定、Unix 非阻塞 TUN、读循环、写包、自检与残留清理 | `WintunApi`, `TunDevice`, `SelfTestReport` |
 | `netcfg` | 网卡地址、路由注入/回读、DNS、启动 DNS 预检（默认路由网卡/服务）、旧版 hosts 残留清理 | `NetConfig`, `RouteEntry`, `CleanupLedger`, `preflight::DnsTarget` |
-| `dns_preflight` | 启动首次 DNS 预检缓存、5 秒超时与界面门禁结果 | `DnsPreflight`, `DnsInspectionDto` |
+| `dns_preflight` | 启动首次 DNS 预检缓存与 5 秒超时 | `DnsPreflight`, `DnsInspectionDto` |
 | `session` | 生命周期编排、事件广播、自动重连、数据面健康检查与自愈 | `Engine`, `EngineState`, `EngineEvent`, `HealthTracker` |
 | `platform` | 运行环境探测，区分 Windows 7 与较新系统 | `is_windows7()` |
 | `update` | 版本检查、流式下载、Windows/macOS 安装编排与更新临时目录清理 | `UpdateInfo`, `UpdateProgress`, `check()` |
@@ -396,11 +396,11 @@ type WintunCreateAdapter = unsafe extern "system" fn(*const u16, *const u16, *co
 **启动 DNS 预检**
 
 - `DnsPreflight` 用 `tokio::sync::OnceCell` 缓存本次启动的首次检查结果；`lib.rs` 启动时提前 spawn 一次，前端命令共享同一结果
-- 预检 5 秒超时；超时或检测失败都返回 `DnsInspectionDto.error` 并释放门禁，不阻塞界面
+- 预检 5 秒超时；超时或检测失败都返回 `DnsInspectionDto.error`，不阻塞界面
 - Windows：`GetIpForwardTable` 取默认路由，`GetAdaptersAddresses` 取网卡 GUID/连接名，读 `Tcpip` / `Tcpip6` 的 `NameServer` / `NameServerList` 判断手动 DNS，`netsh ... source=dhcp` 修改并回读注册表
 - macOS：默认接口映射到网络服务，`networksetup -getdnsservers` 三态判断（自动/手动/未知），`networksetup setdnsservers <service> Empty` 修改并回读
-- 前端 `useDnsPreflight` 的 `startupChecking` 在首次预检结束前禁用连接与忘记密码按钮；检测到手动 DNS 时继续禁用，直到改为自动获取成功或点击「跳过」；跳过后保留卡片并标记已跳过，连接门禁解除；手动「重新检查」会重置跳过状态，只禁用卡片按钮
-- `autostart` 不等待预检，也不因手动 DNS 暂停；预检结果只用于连接页告警与按钮门禁
+- 前端 `useDnsPreflight` 的 `startupChecking` 只在登录卡片显示检查提示，不禁用连接与忘记密码按钮；检测到手动 DNS 时也不阻止连接；卡片提供「改为自动获取」「重新检查」「跳过」，跳过后保留卡片并标记已跳过，重新检查会重置跳过状态
+- `autostart` 不等待预检，也不因手动 DNS 暂停；预检结果只用于连接页告警
 - 已连接/连接中禁止修改 DNS；后端 `Engine::ensure_dns_change_allowed()` 再做一次状态校验
 - 修改成功后保持自动获取，断开不恢复；Windows 不改 Wintun DNS 账本，macOS 连接中的 `set_dns` 会以 `Empty` 作为原值记账并在断开时写回 `Empty`
 
@@ -520,7 +520,7 @@ Linux 不安装特权 helper，`is_elevated()` 直接判断 `geteuid() == 0`：
 ### 8.3 状态与交互
 
 - 连接按钮五态：默认 / 处理中（spinner）/ 已连接（变断开）/ 禁用 / 错误
-- 启动 DNS 预检：`App` 挂载时调用 `inspect_network_dns`，连接页在 `StatusHero` 下方显示 `DnsWarningBanner`；首次预检结束前连接与忘记密码按钮禁用（`startupChecking`），预检结束（成功/失败/超时）后恢复；开启启动自动连接时后端不等待预检，直接发起连接
+- 启动 DNS 预检：`App` 挂载时调用 `inspect_network_dns`，连接页在 `StatusHero` 下方显示 `DnsWarningBanner`；首次预检只在登录卡片显示检查提示，连接与忘记密码按钮始终可用；开启启动自动连接时后端不等待预检，直接发起连接
 - DNS 告警卡片：展示网络名、当前 DNS、风险提示与「改为自动获取」「重新检查」「跳过」；跳过后卡片保留并显示已跳过提示，连接按钮解锁；已连接/连接中禁用修改并提示先断开；修改成功后保持自动获取，断开不恢复
 - 验证码：Modal 展示 PNG，支持点击刷新、回车提交、120 秒超时
 - 动态验证码：`sms_pending` 阶段弹出 OTP 弹窗，支持回车提交、重新发送倒计时（网关 `sms_valid_time`，上限 600 秒）、3 次输错重试，超时或取消失败时自动收起
