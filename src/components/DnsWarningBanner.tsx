@@ -104,7 +104,7 @@ export function DnsWarningBanner({
               {t("重新检查")}
             </Button>
             <Button
-              variant="ghost"
+              variant={skipped ? "success" : "outline"}
               size="sm"
               onClick={onSkip}
               disabled={disabled || applying || skipped}

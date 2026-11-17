@@ -17,7 +17,13 @@ export function cn(...values: Array<string | false | null | undefined>): string 
 
 /* ---------------- Button ---------------- */
 
-type ButtonVariant = "primary" | "ghost" | "danger" | "subtle" | "outline";
+type ButtonVariant =
+  | "primary"
+  | "ghost"
+  | "danger"
+  | "subtle"
+  | "outline"
+  | "success";
 type ButtonSize = "sm" | "md" | "lg";
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
@@ -28,6 +34,7 @@ const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   subtle: "text-muted hover:bg-hover hover:text-text",
   outline:
     "border border-accent/50 bg-accent-soft text-accent hover:border-accent/70 hover:bg-accent/15",
+  success: "border border-ok/40 bg-ok-soft text-ok hover:bg-ok/15",
 };
 
 const BUTTON_SIZE: Record<ButtonSize, string> = {
