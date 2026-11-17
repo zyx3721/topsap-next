@@ -81,9 +81,11 @@ pub fn run() {
                     engine.purge_previous_session().await;
                 });
             }
-            tauri::async_runtime::spawn(async move {
-                let _ = preflight.ensure().await;
-            });
+            if crate::settings::load(app.handle()).dns_preflight_on_start {
+                tauri::async_runtime::spawn(async move {
+                    let _ = preflight.ensure().await;
+                });
+            }
             crate::shutdown::install(app.handle());
             let settings = crate::settings::load(app.handle());
             if let Err(err) = crate::proxy_bypass::apply(app.handle(), &settings) {

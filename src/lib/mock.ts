@@ -39,6 +39,7 @@ let pendingForm: LoginForm | null = null;
 let connectResolve: ((summary: SessionSummary) => void) | null = null;
 let connectReject: ((error: Error) => void) | null = null;
 let mockDnsManual = true;
+let mockDnsPreflightOnStart = true;
 
 export function isMockMode(): boolean {
   return (
@@ -222,6 +223,7 @@ async function handle(cmd: string, args?: Record<string, unknown>): Promise<unkn
         auto_reconnect: true,
         auto_reconnect_max_attempts: 5,
         auto_connect_on_start: false,
+        dns_preflight_on_start: mockDnsPreflightOnStart,
         close_to_tray: true,
         theme: "system",
         proxy_bypass_enabled: true,
@@ -230,8 +232,11 @@ async function handle(cmd: string, args?: Record<string, unknown>): Promise<unkn
         disabled_routes: ["172.16.0.0/12"],
       } satisfies AppSettings;
 
-    case "save_settings":
+    case "save_settings": {
+      const next = args?.settings as AppSettings | undefined;
+      if (next) mockDnsPreflightOnStart = next.dns_preflight_on_start;
       return null;
+    }
 
     case "proxy_bypass_status":
       return {

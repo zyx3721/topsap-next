@@ -395,7 +395,7 @@ type WintunCreateAdapter = unsafe extern "system" fn(*const u16, *const u16, *co
 
 **启动 DNS 预检**
 
-- `DnsPreflight` 用 `tokio::sync::OnceCell` 缓存本次启动的首次检查结果；`lib.rs` 启动时提前 spawn 一次，前端命令共享同一结果
+- `DnsPreflight` 用 `tokio::sync::OnceCell` 缓存本次启动的首次检查结果；`lib.rs` 在设置 `dns_preflight_on_start` 开启时（默认开启）提前 spawn 一次，前端命令共享同一结果；关闭时 `inspect_network_dns` 直接返回空结果，不执行检查
 - 预检 5 秒超时；超时或检测失败都返回 `DnsInspectionDto.error`，不阻塞界面
 - Windows：`GetIpForwardTable` 取默认路由，`GetAdaptersAddresses` 取网卡 GUID/连接名，读 `Tcpip` / `Tcpip6` 的 `NameServer` / `NameServerList` 判断手动 DNS，`netsh ... source=dhcp` 修改并回读注册表
 - macOS：默认接口映射到网络服务，`networksetup -getdnsservers` 三态判断（自动/手动/未知），`networksetup setdnsservers <service> Empty` 修改并回读

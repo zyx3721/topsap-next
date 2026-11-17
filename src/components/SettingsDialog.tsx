@@ -567,6 +567,21 @@ export function SettingsDialog({
                             />
                           }
                         />
+                        <SettingRow
+                          title={t("启动时检查本机 DNS")}
+                          description={t(
+                            "启动后检查默认网络是否使用手动 DNS；关闭后不进行预检，连接页不显示 DNS 告警",
+                          )}
+                          control={
+                            <Switch
+                              checked={draft.dns_preflight_on_start}
+                              onChange={(next) =>
+                                update({ dns_preflight_on_start: next })
+                              }
+                              label={t("启动时检查本机 DNS")}
+                            />
+                          }
+                        />
                         {infoQuery.data?.platform === "macos" ? (
                           <SettingRow
                             title={t("关闭窗口后隐藏 Dock 图标")}

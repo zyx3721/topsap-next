@@ -503,6 +503,9 @@ const EN: Record<string, string> = {
   "连接流程已结束，无需再确认": "The connection flow has already ended; no confirmation is needed",
   "提交失败": "Submission failed",
   // 本机 DNS 预检
+  "启动时检查本机 DNS": "Check local DNS on launch",
+  "启动后检查默认网络是否使用手动 DNS；关闭后不进行预检，连接页不显示 DNS 告警":
+    "Check whether the default network uses manual DNS on launch; when disabled, no precheck runs and the DNS warning is not shown.",
   "本机 DNS 不是自动获取": "Local DNS is not set to automatic",
   "检测到默认网络「{name}」使用手动配置的 DNS。手动 DNS 可能导致网关域名或内网域名解析异常。":
     "The default network \"{name}\" uses manually configured DNS. This may prevent the gateway or internal domains from resolving.",

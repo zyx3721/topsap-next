@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "../lib/api";
 import { firstLine } from "../lib/format";
 import { useI18n } from "../lib/i18n";
+import { queryKeys } from "../lib/query";
 import type { DnsTarget } from "../types/engine";
 
 export interface DnsPreflightController {
@@ -27,6 +29,14 @@ export function useDnsPreflight(): DnsPreflightController {
   const [applying, setApplying] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: api.loadSettings,
+  });
+  const settingsReady =
+    settingsQuery.data !== undefined || settingsQuery.isError;
+  const enabled = settingsQuery.data?.dns_preflight_on_start !== false;
+  const previousEnabled = useRef<boolean | null>(null);
 
   const runCheck = useCallback(async (force: boolean) => {
     setChecking(true);
@@ -49,12 +59,34 @@ export function useDnsPreflight(): DnsPreflightController {
   }, []);
 
   useEffect(() => {
-    void runCheck(false);
-  }, [runCheck]);
+    if (!settingsReady) return;
+    const previous = previousEnabled.current;
+    previousEnabled.current = enabled;
+
+    if (!enabled) {
+      setTarget(null);
+      setSkipped(false);
+      setError(null);
+      setChecking(false);
+      setStartupChecking(false);
+      return;
+    }
+
+    // 只在本次启动首次读取设置时检查；运行中重新开启等待下次启动
+    if (previous === null) {
+      void runCheck(false);
+    }
+  }, [enabled, settingsReady, runCheck]);
 
   const refresh = useCallback(async () => {
+    if (!enabled) {
+      setTarget(null);
+      setSkipped(false);
+      setError(null);
+      return;
+    }
     await runCheck(true);
-  }, [runCheck]);
+  }, [enabled, runCheck]);
 
   const skip = useCallback(() => {
     setSkipped(true);

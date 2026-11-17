@@ -185,6 +185,8 @@ export interface AppSettings {
   auto_reconnect_max_attempts: number;
   /** 启动软件后自动使用默认配置与已保存密码连接 */
   auto_connect_on_start: boolean;
+  /** 启动时检查默认网络 DNS 是否为自动获取 */
+  dns_preflight_on_start: boolean;
   close_to_tray: boolean;
   theme: ThemeMode;
   proxy_bypass_enabled: boolean;

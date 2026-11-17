@@ -8,9 +8,16 @@ use crate::AppState;
 /// 检查默认路由网卡的 DNS 是否为自动获取
 #[tauri::command]
 pub async fn inspect_network_dns(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     force: bool,
 ) -> Result<DnsInspectionDto, String> {
+    if !crate::settings::load(&app).dns_preflight_on_start {
+        return Ok(DnsInspectionDto {
+            target: None,
+            error: None,
+        });
+    }
     if force {
         Ok(crate::dns_preflight::run_check().await)
     } else {

@@ -270,6 +270,8 @@ pub struct AppSettings {
     pub close_to_tray: bool,
     /// 启动软件后自动使用默认连接配置与已保存密码连接
     pub auto_connect_on_start: bool,
+    /// 启动时检查默认网络 DNS 是否为自动获取
+    pub dns_preflight_on_start: bool,
     /// system / dark / light
     pub theme: String,
     /// 是否把代理绕过条目写入系统代理设置
@@ -293,6 +295,7 @@ impl Default for AppSettings {
             auto_reconnect_max_attempts: 5,
             close_to_tray: true,
             auto_connect_on_start: false,
+            dns_preflight_on_start: true,
             theme: "system".to_string(),
             proxy_bypass_enabled: true,
             proxy_bypass: crate::proxy_bypass::default_entries(),
@@ -420,5 +423,11 @@ mod tests {
         assert_eq!(value["target"]["name"], "以太网");
         assert_eq!(value["target"]["current"][0], "192.0.2.53");
         assert!(value.get("error").is_none());
+    }
+
+    #[test]
+    fn 旧配置缺少预检开关时默认开启() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
+        assert!(settings.dns_preflight_on_start);
     }
 }
