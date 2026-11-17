@@ -28,6 +28,7 @@ import {
 import type { DnsPreflightController } from "../hooks/useDnsPreflight";
 import { isBusyPhase, type EngineView } from "../hooks/useEngineEvents";
 import { api } from "../lib/api";
+import { isDnsGateActive } from "../lib/dnsGate";
 import { firstLine, isValidGateway, isValidPort } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { queryKeys } from "../lib/query";
@@ -234,10 +235,13 @@ export function ConnectPage({
 
   const connected = engine.phase === "connected";
   const busy = isBusyPhase(engine.phase) || connecting || probingLines;
-  const dnsGate =
-    dnsPreflight.startupChecking ||
-    dnsPreflight.applying ||
-    dnsPreflight.target !== null;
+  const manualDns = dnsPreflight.target !== null;
+  const dnsGate = isDnsGateActive({
+    startupChecking: dnsPreflight.startupChecking,
+    applying: dnsPreflight.applying,
+    hasManualDns: manualDns,
+    skipped: dnsPreflight.skipped,
+  });
   const connectDisabled = busy || connected || dnsGate;
   const dnsPhaseBusy = engine.phase !== "idle" && engine.phase !== "failed";
   const dnsDisabled = dnsPhaseBusy || dnsPreflight.checking || connecting;
@@ -317,11 +321,13 @@ export function ConnectPage({
       <DnsWarningBanner
         target={dnsPreflight.target}
         applying={dnsPreflight.applying}
+        skipped={dnsPreflight.skipped}
         error={dnsPreflight.error}
         disabled={dnsDisabled}
         disabledHint={dnsDisabledHint}
         onApply={() => void dnsPreflight.apply()}
         onRefresh={() => void dnsPreflight.refresh()}
+        onSkip={dnsPreflight.skip}
       />
 
       {connected ? (
@@ -507,7 +513,7 @@ export function ConnectPage({
 
             {dnsPreflight.startupChecking ? (
               <p className="text-[11px] text-faint">{t("正在检查本机 DNS…")}</p>
-            ) : dnsPreflight.target ? (
+            ) : manualDns && !dnsPreflight.skipped ? (
               <p className="text-[11px] text-faint">
                 {t("请先改为自动获取本机 DNS 后再连接")}
               </p>

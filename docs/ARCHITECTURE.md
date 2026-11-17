@@ -399,7 +399,7 @@ type WintunCreateAdapter = unsafe extern "system" fn(*const u16, *const u16, *co
 - 预检 5 秒超时；超时或检测失败都返回 `DnsInspectionDto.error` 并释放门禁，不阻塞界面
 - Windows：`GetIpForwardTable` 取默认路由，`GetAdaptersAddresses` 取网卡 GUID/连接名，读 `Tcpip` / `Tcpip6` 的 `NameServer` / `NameServerList` 判断手动 DNS，`netsh ... source=dhcp` 修改并回读注册表
 - macOS：默认接口映射到网络服务，`networksetup -getdnsservers` 三态判断（自动/手动/未知），`networksetup setdnsservers <service> Empty` 修改并回读
-- 前端 `useDnsPreflight` 的 `startupChecking` 在首次预检结束前禁用连接与忘记密码按钮；检测到手动 DNS 时继续禁用，直到改为自动获取成功；手动「重新检查」只禁用卡片按钮
+- 前端 `useDnsPreflight` 的 `startupChecking` 在首次预检结束前禁用连接与忘记密码按钮；检测到手动 DNS 时继续禁用，直到改为自动获取成功或点击「跳过」；跳过后保留卡片并标记已跳过，连接门禁解除；手动「重新检查」会重置跳过状态，只禁用卡片按钮
 - `autostart` 不等待预检，也不因手动 DNS 暂停；预检结果只用于连接页告警与按钮门禁
 - 已连接/连接中禁止修改 DNS；后端 `Engine::ensure_dns_change_allowed()` 再做一次状态校验
 - 修改成功后保持自动获取，断开不恢复；Windows 不改 Wintun DNS 账本，macOS 连接中的 `set_dns` 会以 `Empty` 作为原值记账并在断开时写回 `Empty`
@@ -521,7 +521,7 @@ Linux 不安装特权 helper，`is_elevated()` 直接判断 `geteuid() == 0`：
 
 - 连接按钮五态：默认 / 处理中（spinner）/ 已连接（变断开）/ 禁用 / 错误
 - 启动 DNS 预检：`App` 挂载时调用 `inspect_network_dns`，连接页在 `StatusHero` 下方显示 `DnsWarningBanner`；首次预检结束前连接与忘记密码按钮禁用（`startupChecking`），预检结束（成功/失败/超时）后恢复；开启启动自动连接时后端不等待预检，直接发起连接
-- DNS 告警卡片：展示网络名、当前 DNS、风险提示与「改为自动获取」「重新检查」；已连接/连接中禁用修改并提示先断开；修改成功后保持自动获取，断开不恢复
+- DNS 告警卡片：展示网络名、当前 DNS、风险提示与「改为自动获取」「重新检查」「跳过」；跳过后卡片保留并显示已跳过提示，连接按钮解锁；已连接/连接中禁用修改并提示先断开；修改成功后保持自动获取，断开不恢复
 - 验证码：Modal 展示 PNG，支持点击刷新、回车提交、120 秒超时
 - 动态验证码：`sms_pending` 阶段弹出 OTP 弹窗，支持回车提交、重新发送倒计时（网关 `sms_valid_time`，上限 600 秒）、3 次输错重试，超时或取消失败时自动收起
 - 日志：虚拟滚动或 500 行上限，自动滚底，支持清空与导出

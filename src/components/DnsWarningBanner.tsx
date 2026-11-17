@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, SkipForward } from "lucide-react";
 
 import { useI18n } from "../lib/i18n";
 import type { DnsTarget } from "../types/engine";
@@ -8,19 +8,23 @@ import { Badge, Button } from "./ui";
 export function DnsWarningBanner({
   target,
   applying,
+  skipped,
   error,
   disabled,
   disabledHint,
   onApply,
   onRefresh,
+  onSkip,
 }: {
   target: DnsTarget | null;
   applying: boolean;
+  skipped: boolean;
   error: string | null;
   disabled: boolean;
   disabledHint?: string;
   onApply: () => void;
   onRefresh: () => void;
+  onSkip: () => void;
 }) {
   const { t } = useI18n();
   if (!target) return null;
@@ -65,6 +69,14 @@ export function DnsWarningBanner({
             </p>
           ) : null}
 
+          {skipped ? (
+            <p className="text-[11px] leading-relaxed text-warn">
+              {t(
+                "已跳过本机 DNS 修改，将使用当前手动 DNS 连接；若连接失败请改为自动获取。",
+              )}
+            </p>
+          ) : null}
+
           {error ? (
             <p className="text-[11px] leading-relaxed text-danger">{error}</p>
           ) : null}
@@ -90,6 +102,15 @@ export function DnsWarningBanner({
             >
               <RefreshCw className="h-3.5 w-3.5" />
               {t("重新检查")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onSkip}
+              disabled={disabled || applying || skipped}
+            >
+              <SkipForward className="h-3.5 w-3.5" />
+              {skipped ? t("已跳过") : t("跳过")}
             </Button>
           </div>
         </div>

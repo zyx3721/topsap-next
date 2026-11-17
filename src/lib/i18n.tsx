@@ -512,6 +512,12 @@ const EN: Record<string, string> = {
   "该网卡使用静态 IP，改为自动获取 DNS 后可能没有可用的 DNS 服务器，请确认网络支持 DHCP。":
     "This adapter uses a static IP; setting DNS to automatic may leave no usable DNS servers. Make sure the network supports DHCP.",
   "改为自动获取": "Set to automatic",
+  "跳过": "Skip",
+  "已跳过": "Skipped",
+  "已跳过本机 DNS 修改，将使用当前手动 DNS 连接":
+    "Local DNS changes skipped; the connection will use the current manual DNS",
+  "已跳过本机 DNS 修改，将使用当前手动 DNS 连接；若连接失败请改为自动获取。":
+    "Local DNS changes skipped; the connection will use the current manual DNS. Set DNS to automatic if the connection fails.",
   "正在修改…": "Updating…",
   "正在检查本机 DNS…": "Checking local DNS…",
   "当前已连接，请先断开连接后再修改 DNS": "Disconnect before changing DNS",
