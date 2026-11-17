@@ -11,7 +11,6 @@ export function DnsWarningBanner({
   error,
   disabled,
   disabledHint,
-  autoConnectPaused,
   onApply,
   onRefresh,
 }: {
@@ -20,7 +19,6 @@ export function DnsWarningBanner({
   error: string | null;
   disabled: boolean;
   disabledHint?: string;
-  autoConnectPaused?: boolean;
   onApply: () => void;
   onRefresh: () => void;
 }) {
@@ -64,12 +62,6 @@ export function DnsWarningBanner({
               {t(
                 "该网卡使用静态 IP，改为自动获取 DNS 后可能没有可用的 DNS 服务器，请确认网络支持 DHCP。",
               )}
-            </p>
-          ) : null}
-
-          {autoConnectPaused ? (
-            <p className="text-[11px] leading-relaxed text-warn">
-              {t("启动自动连接已暂停；改为自动获取后请手动点击「连接」。")}
             </p>
           ) : null}
 

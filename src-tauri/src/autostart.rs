@@ -3,20 +3,20 @@
 //! 仅在同时满足以下条件时执行，任何一项不满足都只写运行日志、不打扰用户：
 //! 1. 设置中开启 `auto_connect_on_start`；
 //! 2. 存在连接配置（默认配置优先，否则取第一条）；
-//! 3. 已保存账号与密码（密码从安全存储读取，不经过前端）；
-//! 4. 启动 DNS 预检结束；检测到手动 DNS 时暂停自动连接，等待用户处理后手动连接。
+//! 3. 已保存账号与密码（密码从安全存储读取，不经过前端）。
 //!
-//! 自动连接与手动连接共用 `Engine::connect`，验证码、路由冲突、失败提示等
+//! 自动连接不等待本机 DNS 预检，也不受手动 DNS 影响；预检仍由启动流程执行并供
+//! 连接页告警。自动连接与手动连接共用 `Engine::connect`，验证码、路由冲突、失败提示等
 //! 流程完全一致；并发时由引擎内部的 `connecting` 原子锁保证只有一方执行。
 
 use std::time::Duration;
 
 use tauri::Manager;
 
-use crate::dto::{AppSettings, DnsInspectionDto, LoginForm};
+use crate::dto::{AppSettings, LoginForm};
 use crate::profiles::{self, ConnectionProfile};
 
-/// 预检结束后再等窗口首帧与启动补注销完成，避免启动瞬间的状态竞争
+/// 等待窗口首帧与启动补注销完成，避免启动瞬间的状态竞争
 const STARTUP_DELAY: Duration = Duration::from_millis(800);
 
 /// 满足条件时安排一次启动自动连接；不满足时写日志并直接返回。
@@ -27,7 +27,6 @@ pub fn schedule(app: &tauri::AppHandle) {
     }
     let state = app.state::<crate::AppState>();
     let engine = state.engine.clone();
-    let preflight = state.dns_preflight.clone();
     let form = match prepare(app, &settings) {
         Ok(form) => form,
         Err(reason) => {
@@ -41,24 +40,6 @@ pub fn schedule(app: &tauri::AppHandle) {
         form.gateway, form.user
     ));
     tauri::async_runtime::spawn(async move {
-        let inspection = preflight.ensure().await;
-        if should_pause_auto_connect(&inspection) {
-            let name = inspection
-                .target
-                .as_ref()
-                .map(|target| target.name.as_str())
-                .unwrap_or_default();
-            log::info!("启动自动连接已暂停：本机 DNS 为手动配置（{name}）");
-            engine.report_log(format!(
-                "启动自动连接已暂停：本机 DNS 为手动配置（{name}），请在连接页处理后手动连接"
-            ));
-            return;
-        }
-        if let Some(error) = &inspection.error {
-            engine.report_log(format!(
-                "启动自动连接：本机 DNS 预检未完成（{error}），继续连接"
-            ));
-        }
         tokio::time::sleep(STARTUP_DELAY).await;
         if let Err(err) = engine.connect(form).await {
             // connect 已把失败原因写入运行日志并更新状态，这里只补一条来源说明
@@ -66,11 +47,6 @@ pub fn schedule(app: &tauri::AppHandle) {
             engine.report_log(format!("启动自动连接失败：{err}"));
         }
     });
-}
-
-/// 检测到手动 DNS 时暂停自动连接，等待用户处理后手动连接
-fn should_pause_auto_connect(inspection: &DnsInspectionDto) -> bool {
-    inspection.target.is_some()
 }
 
 /// 读取密码与默认连接配置并组装登录表单；条件缺失时返回可读原因。
@@ -169,26 +145,5 @@ mod tests {
     #[test]
     fn 线路格式非法时跳过() {
         assert!(build_form(&settings("demo"), &profile(vec![""]), "secret".into()).is_none());
-    }
-
-    #[test]
-    fn 手动_dns_时暂停自动连接() {
-        let manual = DnsInspectionDto {
-            target: Some(crate::dto::DnsTargetDto {
-                name: "以太网 3".to_string(),
-                current: vec!["192.168.2.1".to_string()],
-                dhcp_enabled: Some(true),
-            }),
-            error: None,
-        };
-        assert!(should_pause_auto_connect(&manual));
-        assert!(!should_pause_auto_connect(&DnsInspectionDto {
-            target: None,
-            error: None,
-        }));
-        assert!(!should_pause_auto_connect(&DnsInspectionDto {
-            target: None,
-            error: Some("无法检测".to_string()),
-        }));
     }
 }

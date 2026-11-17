@@ -246,9 +246,6 @@ export function ConnectPage({
     : engine.phase === "connected"
       ? t("当前已连接，请先断开连接后再修改 DNS")
       : t("连接进行中，请稍后再修改 DNS");
-  const autoConnectPaused = Boolean(
-    settingsQuery.data?.auto_connect_on_start && dnsPreflight.target,
-  );
   const disconnectDisabled = !connected && !isBusyPhase(engine.phase);
 
   const submit = async () => {
@@ -323,7 +320,6 @@ export function ConnectPage({
         error={dnsPreflight.error}
         disabled={dnsDisabled}
         disabledHint={dnsDisabledHint}
-        autoConnectPaused={autoConnectPaused}
         onApply={() => void dnsPreflight.apply()}
         onRefresh={() => void dnsPreflight.refresh()}
       />
