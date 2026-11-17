@@ -342,6 +342,7 @@ topsap-next/
 
 | 版本 | 发布日期 | 更新日志 |
 | --- | --- | --- |
+| v1.7.3 | 2026-11-17 | [verchanglog/v1.7.3.md](verchanglog/v1.7.3.md) |
 | v1.7.2 | 2026-11-17 | [verchanglog/v1.7.2.md](verchanglog/v1.7.2.md) |
 | v1.7.1 | 2026-11-17 | [verchanglog/v1.7.1.md](verchanglog/v1.7.1.md) |
 | v1.7.0 | 2026-11-17 | [verchanglog/v1.7.0.md](verchanglog/v1.7.0.md) |
