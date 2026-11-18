@@ -513,6 +513,23 @@ export function SettingsDialog({
                             />
                           }
                         />
+                        {infoQuery.data?.platform === "macos" && draft.close_to_tray ? (
+                          <SettingRow
+                            title={t("关闭窗口后隐藏 Dock 图标")}
+                            description={t(
+                              "关闭窗口时连 Dock 图标一起隐藏，只保留菜单栏托盘；再次打开窗口时 Dock 图标自动恢复",
+                            )}
+                            control={
+                              <Switch
+                                checked={draft.hide_dock_when_closed}
+                                onChange={(next) =>
+                                  update({ hide_dock_when_closed: next })
+                                }
+                                label={t("关闭窗口后隐藏 Dock 图标")}
+                              />
+                            }
+                          />
+                        ) : null}
                         <SettingRow
                           title={t("断线自动重连")}
                           description={t("隧道异常断开后按指数退避重试；主动断开不触发")}
@@ -636,24 +653,6 @@ export function SettingsDialog({
                             </div>
                           }
                         />
-                        {infoQuery.data?.platform === "macos" ? (
-                          <SettingRow
-                            title={t("关闭窗口后隐藏 Dock 图标")}
-                            description={t(
-                              "关闭窗口时连 Dock 图标一起隐藏，只保留菜单栏托盘；再次打开窗口时 Dock 图标自动恢复",
-                            )}
-                            control={
-                              <Switch
-                                checked={draft.hide_dock_when_closed}
-                                onChange={(next) =>
-                                  update({ hide_dock_when_closed: next })
-                                }
-                                disabled={!draft.close_to_tray}
-                                label={t("关闭窗口后隐藏 Dock 图标")}
-                              />
-                            }
-                          />
-                        ) : null}
                       </div>
                     </Card>
 
