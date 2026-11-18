@@ -23,6 +23,7 @@ import { firstLine } from "./lib/format";
 import { applyTheme } from "./lib/theme";
 import { useI18n } from "./lib/i18n";
 import { queryKeys } from "./lib/query";
+import { updateCheckIntervalMinutes } from "./lib/updateCheck";
 import { ConnectPage } from "./pages/ConnectPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import type {
@@ -80,6 +81,21 @@ export default function App() {
     queryKey: queryKeys.settings,
     queryFn: api.loadSettings,
   });
+  const updateRefetchRef = useRef(updateQuery.refetch);
+
+  useEffect(() => {
+    updateRefetchRef.current = updateQuery.refetch;
+  }, [updateQuery.refetch]);
+
+  useEffect(() => {
+    const minutes = updateCheckIntervalMinutes(settingsQuery.data);
+    if (minutes === null) return;
+    const timer = window.setInterval(() => {
+      void updateRefetchRef.current();
+    }, minutes * 60_000);
+    return () => window.clearInterval(timer);
+  }, [settingsQuery.data]);
+
   const connectionsQuery = useQuery({
     queryKey: ["connections"],
     queryFn: api.listConnections,

@@ -244,6 +244,15 @@ const EN: Record<string, string> = {
     "Enable Remember password and connect once so the password is saved",
   "启动软件后使用默认配置与已保存密码自动连接":
     "Connect automatically on launch using the default profile and saved password",
+  "自动检查更新": "Automatic update checks",
+  "运行期间每隔设定时间检查一次发布目录；启动时的首次检查不受此设置影响":
+    "Checks the release folder at the configured interval while running; the first check at launch is not affected",
+  "已关闭运行期间的定时检查；启动时仍会检查一次，也可点击侧栏版本号手动检查":
+    "Periodic checks are off; the app still checks once at launch, and you can click the sidebar version to check manually",
+  "检查更新间隔": "Update check interval",
+  "分": "min",
+  "不检查": "Disable checks",
+  "已关闭": "Off",
   "主题": "Theme",
   "深浅色跟随或固定": "Follow the system or choose a fixed theme",
   "跟随系统": "Follow system",
@@ -393,7 +402,6 @@ const EN: Record<string, string> = {
   "断开失败": "Disconnect failed",
   "连接已取消": "Connection cancelled",
   // 设置窗口与状态细节
-  "托盘与自动重连": "Tray and auto-reconnect",
   "应用行为与连接偏好": "App behavior and connection preferences",
   "网关配置与线路": "Gateways and lines",
   "更改即时生效": "Changes apply immediately",

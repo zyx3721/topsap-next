@@ -187,6 +187,10 @@ export interface AppSettings {
   auto_connect_on_start: boolean;
   /** 启动时检查默认网络 DNS 是否为自动获取 */
   dns_preflight_on_start: boolean;
+  /** 运行期间跳过定时检查更新；启动首次检查与手动检查不受影响 */
+  update_check_disabled: boolean;
+  /** 运行期间检查更新的间隔（分钟） */
+  update_check_interval_min: number;
   close_to_tray: boolean;
   theme: ThemeMode;
   proxy_bypass_enabled: boolean;

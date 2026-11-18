@@ -107,6 +107,7 @@ export function SettingsDialog({
   const [routeInput, setRouteInput] = useState("");
   const [routeQuery, setRouteQuery] = useState("");
   const [reconnectInput, setReconnectInput] = useState("5");
+  const [updateIntervalInput, setUpdateIntervalInput] = useState("10");
   const [profileOpen, setProfileOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<ConnectionProfile | null>(null);
   const [confirmState, setConfirmState] = useState<
@@ -131,6 +132,10 @@ export function SettingsDialog({
     const value = draft?.auto_reconnect_max_attempts ?? 5;
     setReconnectInput(String(value === 0 ? 5 : value));
   }, [draft?.auto_reconnect_max_attempts]);
+
+  useEffect(() => {
+    setUpdateIntervalInput(String(draft?.update_check_interval_min ?? 10));
+  }, [draft?.update_check_interval_min]);
 
   useEffect(() => {
     if (!open) return;
@@ -234,7 +239,7 @@ export function SettingsDialog({
   if (!open) return null;
 
   const sections: Array<{ id: SectionId; label: string; hint: string; icon: typeof Settings2 }> = [
-    { id: "general", label: t("通用"), hint: t("托盘与自动重连"), icon: Settings2 },
+    { id: "general", label: t("通用"), hint: t("应用行为与连接偏好"), icon: Settings2 },
     { id: "connections", label: t("连接管理"), hint: t("网关配置与线路"), icon: Server },
     { id: "proxy", label: t("代理绕过"), hint: t("指定域名/IP 不走系统代理"), icon: ShieldOff },
     { id: "routes", label: t("路由生效范围"), hint: t("勾选哪些隧道路由不生效"), icon: Network },
@@ -306,6 +311,7 @@ export function SettingsDialog({
 
   // 断线自动重连：0 表示不限次数
   const unlimitedReconnect = (draft?.auto_reconnect_max_attempts ?? 5) === 0;
+  const updatesDisabled = draft?.update_check_disabled ?? false;
 
   // 启动自动连接：配置、账号、已保存密码三者齐全才允许勾选
   const autoConnect = autoConnectAvailability({
@@ -404,6 +410,16 @@ export function SettingsDialog({
     }
   };
 
+  const commitUpdateInterval = () => {
+    if (!draft) return;
+    const parsed = Number.parseInt(updateIntervalInput, 10);
+    const next = Number.isFinite(parsed) ? Math.min(1440, Math.max(1, parsed)) : 10;
+    setUpdateIntervalInput(String(next));
+    if (next !== draft.update_check_interval_min) {
+      update({ update_check_interval_min: next });
+    }
+  };
+
   const changeTheme = (theme: ThemeMode) => {
     update({ theme });
     applyTheme(theme);
@@ -467,11 +483,7 @@ export function SettingsDialog({
           <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
             <div>
               <h2 className="text-base font-semibold text-text">{activeSection.label}</h2>
-              <p className="mt-0.5 text-xs text-muted">
-                {section === "general"
-                  ? t("应用行为与连接偏好")
-                  : activeSection.hint}
-              </p>
+              <p className="mt-0.5 text-xs text-muted">{activeSection.hint}</p>
             </div>
             <IconButton label={t("关闭")} onClick={onClose}>
               <X className="h-4 w-4" />
@@ -580,6 +592,48 @@ export function SettingsDialog({
                               }
                               label={t("启动时检查本机 DNS")}
                             />
+                          }
+                        />
+                        <SettingRow
+                          title={t("自动检查更新")}
+                          description={
+                            updatesDisabled
+                              ? t("已关闭运行期间的定时检查；启动时仍会检查一次，也可点击侧栏版本号手动检查")
+                              : t("运行期间每隔设定时间检查一次发布目录；启动时的首次检查不受此设置影响")
+                          }
+                          control={
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min={1}
+                                max={1440}
+                                value={updatesDisabled ? "" : updateIntervalInput}
+                                placeholder={updatesDisabled ? t("已关闭") : "10"}
+                                aria-label={t("检查更新间隔")}
+                                disabled={updatesDisabled}
+                                onChange={(event) =>
+                                  setUpdateIntervalInput(event.target.value)
+                                }
+                                onBlur={commitUpdateInterval}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") commitUpdateInterval();
+                                }}
+                                className="w-20"
+                              />
+                              <span className="whitespace-nowrap text-[11px] text-faint">
+                                {t("分")}
+                              </span>
+                              <Switch
+                                checked={updatesDisabled}
+                                onChange={(next) =>
+                                  update({ update_check_disabled: next })
+                                }
+                                label={t("不检查")}
+                              />
+                              <span className="whitespace-nowrap text-[11px] text-faint">
+                                {t("不检查")}
+                              </span>
+                            </div>
                           }
                         />
                         {infoQuery.data?.platform === "macos" ? (

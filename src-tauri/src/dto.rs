@@ -272,6 +272,10 @@ pub struct AppSettings {
     pub auto_connect_on_start: bool,
     /// 启动时检查默认网络 DNS 是否为自动获取
     pub dns_preflight_on_start: bool,
+    /// 运行期间跳过定时检查更新；启动首次检查与手动检查不受影响
+    pub update_check_disabled: bool,
+    /// 运行期间检查更新的间隔（分钟）
+    pub update_check_interval_min: u32,
     /// system / dark / light
     pub theme: String,
     /// 是否把代理绕过条目写入系统代理设置
@@ -296,6 +300,8 @@ impl Default for AppSettings {
             close_to_tray: true,
             auto_connect_on_start: false,
             dns_preflight_on_start: true,
+            update_check_disabled: false,
+            update_check_interval_min: 10,
             theme: "system".to_string(),
             proxy_bypass_enabled: true,
             proxy_bypass: crate::proxy_bypass::default_entries(),
@@ -328,6 +334,7 @@ impl AppSettings {
             self.theme = "system".to_string();
         }
         self.auto_reconnect_max_attempts = self.auto_reconnect_max_attempts.min(1000);
+        self.update_check_interval_min = self.update_check_interval_min.clamp(1, 1440);
         self.proxy_bypass = crate::proxy_bypass::sanitize_entries(&self.proxy_bypass);
         self.disabled_routes = crate::route_policy::sanitize_disabled(&self.disabled_routes);
         self
@@ -393,6 +400,23 @@ mod tests {
         assert_eq!(s.auto_reconnect_max_attempts, 5);
         assert!(!s.hide_dock_when_closed);
         assert!(s.disabled_routes.is_empty());
+        assert!(!s.update_check_disabled);
+        assert_eq!(s.update_check_interval_min, 10);
+    }
+
+    #[test]
+    fn 设置清洗_更新检查间隔限制在合法范围() {
+        let s = AppSettings {
+            update_check_interval_min: 0,
+            ..Default::default()
+        };
+        assert_eq!(s.sanitized().update_check_interval_min, 1);
+
+        let s = AppSettings {
+            update_check_interval_min: 5000,
+            ..Default::default()
+        };
+        assert_eq!(s.sanitized().update_check_interval_min, 1440);
     }
 
     #[test]

@@ -224,6 +224,8 @@ async function handle(cmd: string, args?: Record<string, unknown>): Promise<unkn
         auto_reconnect_max_attempts: 5,
         auto_connect_on_start: false,
         dns_preflight_on_start: mockDnsPreflightOnStart,
+        update_check_disabled: false,
+        update_check_interval_min: 10,
         close_to_tray: true,
         theme: "system",
         proxy_bypass_enabled: true,
