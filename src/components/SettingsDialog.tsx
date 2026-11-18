@@ -1041,6 +1041,14 @@ export function SettingsDialog({
                         </div>
                       ) : null}
 
+                      <div className="border-t border-border pt-4">
+                        <p className="text-[11px] leading-relaxed text-faint">
+                          {t("本客户端为非官方开源客户端，与天融信官方产品无关")}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+                          {t("由 Jerion 提供并维护 · MIT License")}
+                        </p>
+                      </div>
                     </div>
                   </Card>
                 ) : null}

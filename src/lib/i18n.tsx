@@ -347,6 +347,11 @@ const EN: Record<string, string> = {
   "关于": "About",
   "平台": "Platform",
   "管理员权限": "Administrator rights",
+  "提供方": "Provided by",
+  "本客户端为非官方开源客户端，与天融信官方产品无关":
+    "Unofficial open-source client, not affiliated with Topsec",
+  "由 Jerion 提供并维护 · MIT License":
+    "Provided and maintained by Jerion · MIT License",
   "外观": "Appearance",
   "深浅色主题与界面语言": "Theme and interface language",
 

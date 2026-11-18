@@ -189,6 +189,10 @@ export function AppShell({
                     ) : null}
                   </dd>
                 </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-faint">{t("提供方")}</dt>
+                  <dd className="font-mono text-muted">Jerion</dd>
+                </div>
               </dl>
             </div>
           )}
