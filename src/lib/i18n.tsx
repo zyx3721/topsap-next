@@ -645,6 +645,9 @@ const EN: Record<string, string> = {
   "资源列表": "Resources",
   "搜索资源": "Search resources",
   "打开资源": "Open resource",
+  "置顶": "Pin",
+  "取消置顶": "Unpin",
+  "置顶资源": "Pinned",
   "默认组": "Default group",
   "暂无资源": "No resources",
   "网关未下发资源，或搜索无匹配结果":

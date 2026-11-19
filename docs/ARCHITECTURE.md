@@ -184,6 +184,8 @@ TopSAP-Next/
 │   │   ├── api.ts               # 唯一 IPC 边界
 │   │   ├── format.ts            # 纯函数（字节/时长/IP 校验）
 │   │   ├── format.test.ts
+│   │   ├── resourcePins.ts      # 资源置顶标识与本地持久化
+│   │   ├── resourcePins.test.ts
 │   │   └── query.ts             # QueryClient
 │   ├── hooks/
 │   │   ├── useEngineEvents.ts   # 事件订阅
@@ -197,6 +199,7 @@ TopSAP-Next/
 │       ├── ui.tsx               # Button/Input/Badge/StatusDot/Modal...
 │       ├── AppShell.tsx
 │       ├── StatusHero.tsx
+│       ├── ResourceListCard.tsx  # 资源分组、搜索、置顶
 │       ├── CaptchaDialog.tsx
 │       ├── StatsGrid.tsx
 │       ├── LogPanel.tsx
@@ -540,7 +543,7 @@ Linux 不安装特权 helper，`is_elevated()` 直接判断 `geteuid() == 0`：
 - 图形验证码登录复用选路探测的 Cookie；`-40135/-40018` 自动刷新验证码并最多重试 3 轮
 - 改密前预检新旧密码，后端同时把 `-40037/-40129` 映射为「新密码不能与旧密码一致」
 - 找回密码第一步除验证码错误外自动刷新验证码；第二步 `-40230` 按成功处理并关闭弹窗
-- 连接后信息卡片：资源列表、基本信息、60 秒流量曲线、登录信息；`SessionSummary` 从 `user_param` 与 `res_list` 提取网关版本、登录历史与资源分组
+- 连接后信息卡片：资源列表（悬浮置顶、顶部置顶分组、本地持久化）、基本信息、60 秒流量曲线、登录信息；`SessionSummary` 从 `user_param` 与 `res_list` 提取网关版本、登录历史与资源分组
 
 ### 8.4 IPC 边界
 
