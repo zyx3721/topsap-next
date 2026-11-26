@@ -42,6 +42,8 @@ const HEALTH_RECOVERY_COOLDOWN: Duration = Duration::from_secs(90);
 const HEALTH_RECOVERY_WINDOW: Duration = Duration::from_secs(600);
 const HEALTH_RECOVERY_LIMIT: u32 = 3;
 const PROBE_INTERVAL: Duration = Duration::from_secs(30);
+const PROBE_BIND_RETRIES: u32 = 6;
+const PROBE_BIND_RETRY_DELAY: Duration = Duration::from_secs(5);
 const HEALTH_FAIL_MESSAGE: &str = "网关未恢复数据转发，请重新登录";
 
 struct Inner {
@@ -2286,15 +2288,30 @@ fn spawn_dns_probe(
     name: String,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut probe = match crate::session::probe::DnsProbe::bind(local, server, name).await {
-            Ok(probe) => probe,
-            Err(err) => {
-                if let Some(engine) = engine.upgrade() {
-                    engine.log(format!("DNS 探活不可用：{err}"));
+        let mut bound = None;
+        for attempt in 1..=PROBE_BIND_RETRIES {
+            match crate::session::probe::DnsProbe::bind(local, server, name.clone()).await {
+                Ok(probe) => {
+                    bound = Some(probe);
+                    break;
                 }
-                return;
+                Err(_) if attempt < PROBE_BIND_RETRIES => {
+                    tokio::time::sleep(PROBE_BIND_RETRY_DELAY).await;
+                    if cancel.is_cancelled() {
+                        return;
+                    }
+                }
+                Err(err) => {
+                    if let Some(engine) = engine.upgrade() {
+                        engine.log(format!(
+                            "DNS 探活不可用（连续 {PROBE_BIND_RETRIES} 次绑定虚拟 IP 失败）：{err}，已跳过主动探活"
+                        ));
+                    }
+                    return;
+                }
             }
-        };
+        }
+        let Some(mut probe) = bound else { return };
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => return,
