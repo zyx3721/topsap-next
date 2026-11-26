@@ -31,6 +31,25 @@ pub enum ParsedHandshake {
     Unknown,
 }
 
+/// 网关错误通告：错误码与可读原因
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayError {
+    pub code: u32,
+    pub message: String,
+}
+
+impl GatewayError {
+    /// 会话已失效：继续复用 session_id 重连没有意义，必须重新登录
+    pub fn session_expired(&self) -> bool {
+        is_session_expired(self.code)
+    }
+}
+
+/// 会话级失效错误码：39 会话 ID 非法、42 被踢出、50 连接超时、52 重连虚 IP 无效、57 账号受限
+pub fn is_session_expired(code: u32) -> bool {
+    matches!(code, 39 | 42 | 50 | 52 | 57)
+}
+
 /// 解析 ACK 载荷；无法识别时返回 Unknown，保持对旧网关的兼容
 pub fn parse_response(payload: &[u8]) -> ParsedHandshake {
     if payload.is_empty() {
@@ -48,7 +67,7 @@ pub fn parse_response(payload: &[u8]) -> ParsedHandshake {
 }
 
 /// 只识别明确的错误通告，用于 ACK 之外的控制帧，避免把普通帧误判为地址错误
-pub fn classify_error(payload: &[u8]) -> Option<String> {
+pub fn classify_error(payload: &[u8]) -> Option<GatewayError> {
     if payload.is_empty() {
         return None;
     }
@@ -57,13 +76,13 @@ pub fn classify_error(payload: &[u8]) -> Option<String> {
         let value = serde_json::from_slice::<Value>(trimmed).ok()?;
         return req_packet(&value)
             .filter(|code| is_error_code(*code))
-            .map(rejection_message);
+            .map(gateway_error);
     }
     if payload.len() < 4 {
         return None;
     }
     let code = u32::from_be_bytes(payload[0..4].try_into().ok()?);
-    is_error_code(code).then(|| rejection_message(code))
+    is_error_code(code).then(|| gateway_error(code))
 }
 
 /// 网关错误码对应的用户可读文案
@@ -94,6 +113,13 @@ pub fn rejection_message(code: u32) -> String {
 
 fn is_error_code(code: u32) -> bool {
     (ERROR_CODE_MIN..=ERROR_CODE_MAX).contains(&code)
+}
+
+fn gateway_error(code: u32) -> GatewayError {
+    GatewayError {
+        code,
+        message: rejection_message(code),
+    }
 }
 
 fn parse_json(value: &Value) -> ParsedHandshake {
@@ -353,5 +379,27 @@ mod tests {
         assert_eq!(classify_error(b"OK"), None);
         assert_eq!(classify_error(&[0u8; 64]), None);
         assert!(classify_error(&57u32.to_be_bytes()).is_some());
+    }
+
+    #[test]
+    fn 会话失效错误码归类() {
+        for code in [39, 42, 50, 52, 57] {
+            assert!(is_session_expired(code), "{code} 应判定为会话失效");
+        }
+        for code in [40, 41, 45, 51, 53, 56] {
+            assert!(!is_session_expired(code), "{code} 不应判定为会话失效");
+        }
+    }
+
+    #[test]
+    fn 错误通告携带错误码与会话失效标记() {
+        let error = classify_error(&39u32.to_be_bytes()).expect("应识别错误通告");
+        assert_eq!(error.code, 39);
+        assert!(error.session_expired());
+        assert!(error.message.contains("会话 ID 无效"));
+
+        let error = classify_error(br#"{"req_packet":53}"#).expect("应识别错误通告");
+        assert_eq!(error.code, 53);
+        assert!(!error.session_expired());
     }
 }

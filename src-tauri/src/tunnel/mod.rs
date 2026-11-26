@@ -51,6 +51,9 @@ pub enum TunnelError {
     /// 网关通过握手回应或错误通告明确拒绝，不能按普通断线自动重连
     #[error("{0}")]
     Rejected(String),
+    /// 网关判定会话已失效（强制注销、被踢出、超时等），必须重新登录
+    #[error("{0}")]
+    SessionExpired(String),
     #[error("隧道读写失败：{0}")]
     Io(String),
     #[error("{0}")]
@@ -69,7 +72,11 @@ pub enum TunnelEvent {
     /// 非数据帧（控制/心跳），仅用于日志
     Control { msg_type: u32, payload: Vec<u8> },
     /// 网关明确拒绝隧道，必须断开而不是自动重连
-    Rejected { reason: String },
+    Rejected {
+        reason: String,
+        /// 会话级失效：继续复用 session_id 重连没有意义
+        session_expired: bool,
+    },
     /// 连接结束
     Closed { reason: String },
 }
@@ -239,16 +246,16 @@ async fn run_handshake(
             if frame.msg_type == MSG_ACK {
                 ack_seen = true;
                 match handshake::parse_response(&frame.payload) {
-                    ParsedHandshake::GatewayError { message, .. } => {
-                        return Err(TunnelError::Rejected(message));
+                    ParsedHandshake::GatewayError { code, message } => {
+                        return Err(rejection_for(code, message));
                     }
                     ParsedHandshake::Ok(parsed) => info = Some(parsed),
                     ParsedHandshake::Unknown => {}
                 }
                 continue;
             }
-            if let Some(reason) = handshake::classify_error(&frame.payload) {
-                return Err(TunnelError::Rejected(reason));
+            if let Some(error) = handshake::classify_error(&frame.payload) {
+                return Err(rejection_error(error));
             }
             match handshake::parse_response(&frame.payload) {
                 ParsedHandshake::Ok(parsed) => {
@@ -257,8 +264,8 @@ async fn run_handshake(
                     }
                     before_ack.push(frame);
                 }
-                ParsedHandshake::GatewayError { message, .. } => {
-                    return Err(TunnelError::Rejected(message));
+                ParsedHandshake::GatewayError { code, message } => {
+                    return Err(rejection_for(code, message));
                 }
                 ParsedHandshake::Unknown => before_ack.push(frame),
             }
@@ -268,8 +275,8 @@ async fn run_handshake(
     before_ack.append(&mut after_ack);
     let prefetched = before_ack;
     for frame in &prefetched {
-        if let Some(reason) = handshake::classify_error(&frame.payload) {
-            return Err(TunnelError::Rejected(reason));
+        if let Some(error) = handshake::classify_error(&frame.payload) {
+            return Err(rejection_error(error));
         }
         if info.is_none() {
             if let ParsedHandshake::Ok(parsed) = handshake::parse_response(&frame.payload) {
@@ -288,6 +295,19 @@ async fn run_handshake(
         .map_err(|e| TunnelError::Io(format!("刷新通知帧失败：{e}")))?;
 
     Ok((parser, prefetched, info))
+}
+
+/// 网关错误码转换为隧道错误：会话级失效单独上报，避免继续做无意义的隧道重连
+fn rejection_for(code: u32, message: String) -> TunnelError {
+    if handshake::is_session_expired(code) {
+        TunnelError::SessionExpired(message)
+    } else {
+        TunnelError::Rejected(message)
+    }
+}
+
+fn rejection_error(error: handshake::GatewayError) -> TunnelError {
+    rejection_for(error.code, error.message)
 }
 
 fn spawn_reader(
@@ -365,8 +385,15 @@ async fn handle_frame(
         return events.send(TunnelEvent::Data(frame.payload)).await.is_ok();
     }
 
-    if let Some(reason) = handshake::classify_error(&frame.payload) {
-        return events.send(TunnelEvent::Rejected { reason }).await.is_ok();
+    if let Some(error) = handshake::classify_error(&frame.payload) {
+        let session_expired = error.session_expired();
+        return events
+            .send(TunnelEvent::Rejected {
+                reason: error.message,
+                session_expired,
+            })
+            .await
+            .is_ok();
     }
 
     events

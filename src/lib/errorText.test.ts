@@ -43,6 +43,12 @@ describe("localizeError", () => {
     );
   });
 
+  it("翻译会话过期提示", () => {
+    expect(localizeError("登录会话已过期，请重新登录")).toBe(
+      "Your VPN session has expired. Please sign in again.",
+    );
+  });
+
   it("翻译网关拒绝隧道与地址分配失败", () => {
     expect(
       localizeError("网关拒绝建立隧道：登录账号受限，请使用已绑定的账号（错误码 57）"),

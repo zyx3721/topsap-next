@@ -178,10 +178,11 @@ impl Drop for ReconnectGuard<'_> {
     }
 }
 
-/// 单次重连失败；网关明确拒绝时不再继续重试
+/// 单次重连失败；网关明确拒绝或会话失效时不再继续重试
 enum ReopenError {
     Retry(String),
     Fatal(String),
+    SessionExpired(String),
 }
 
 /// 重连后数据面验证结果；`NoTraffic` 表示期间没有上行可验证，不能当作已恢复
@@ -1616,6 +1617,22 @@ impl Engine {
         self.set_phase(Phase::Failed, reason);
     }
 
+    /// 会话失效：复用旧 session_id 重连没有意义，断开并提示重新登录
+    async fn on_session_expired(self: &Arc<Self>, reason: String) {
+        self.log(format!("登录会话已失效（可能被后台强制注销）：{reason}"));
+        let cleanup_ok = self.teardown().await;
+        if cleanup_ok {
+            self.log("已断开并恢复网络配置，请重新登录");
+        } else {
+            self.log("已断开（部分网络配置未恢复，详见上方日志），请重新登录");
+        }
+        self.lock().abnormal_disconnect = true;
+        self.set_phase(Phase::Failed, "登录会话已过期，请重新登录".to_string());
+        self.emit(EngineEvent::Error {
+            message: "登录会话已过期，请重新登录".to_string(),
+        });
+    }
+
     fn log_handshake_mismatch(&self, session: &LoginSession, tunnel: &TunnelHandle) {
         let Some(info) = tunnel.handshake() else {
             return;
@@ -1727,6 +1744,10 @@ impl Engine {
                     }
                 }
                 Err(ReopenError::Retry(err)) => self.log(format!("重连失败：{err}")),
+                Err(ReopenError::SessionExpired(err)) => {
+                    self.on_session_expired(err).await;
+                    return;
+                }
                 Err(ReopenError::Fatal(err)) => {
                     self.on_gateway_rejected(err).await;
                     return;
@@ -1873,6 +1894,10 @@ impl Engine {
                     }
                 }
                 Err(ReopenError::Retry(err)) => self.log(format!("数据面恢复失败：{err}")),
+                Err(ReopenError::SessionExpired(err)) => {
+                    self.on_session_expired(err).await;
+                    return;
+                }
                 Err(ReopenError::Fatal(err)) => {
                     self.on_gateway_rejected(err).await;
                     return;
@@ -2059,6 +2084,7 @@ impl Engine {
         }
         let (tunnel, event_rx) = opened.map_err(|err| match err {
             tunnel::TunnelError::Rejected(message) => ReopenError::Fatal(message),
+            tunnel::TunnelError::SessionExpired(message) => ReopenError::SessionExpired(message),
             other => ReopenError::Retry(other.to_string()),
         })?;
         self.log_handshake_mismatch(session, &tunnel);
@@ -2139,9 +2165,16 @@ fn spawn_tunnel_events(
                     }
                     return;
                 }
-                TunnelEvent::Rejected { reason } => {
+                TunnelEvent::Rejected {
+                    reason,
+                    session_expired,
+                } => {
                     if let Some(engine) = engine.upgrade() {
-                        tokio::spawn(async move { engine.on_gateway_rejected(reason).await });
+                        if session_expired {
+                            tokio::spawn(async move { engine.on_session_expired(reason).await });
+                        } else {
+                            tokio::spawn(async move { engine.on_gateway_rejected(reason).await });
+                        }
                     }
                     return;
                 }
