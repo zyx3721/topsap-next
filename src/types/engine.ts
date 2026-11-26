@@ -137,6 +137,8 @@ export interface Stats {
   duration_secs: number;
   bytes_up: number;
   bytes_down: number;
+  packets_up: number;
+  packets_down: number;
   packets_in: number;
   packets_out: number;
   dropped_out: number;
@@ -272,6 +274,8 @@ export const EMPTY_STATS: Stats = {
   duration_secs: 0,
   bytes_up: 0,
   bytes_down: 0,
+  packets_up: 0,
+  packets_down: 0,
   packets_in: 0,
   packets_out: 0,
   dropped_out: 0,

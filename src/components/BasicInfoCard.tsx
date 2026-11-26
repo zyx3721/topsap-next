@@ -50,6 +50,10 @@ export function BasicInfoCard({
           label={t("收发数据（上行 / 下行）")}
           value={`${formatBytes(stats.bytes_up)} / ${formatBytes(stats.bytes_down)}`}
         />
+        <InfoRow
+          label={t("收发包数（上行 / 下行）")}
+          value={`${stats.packets_up} / ${stats.packets_down}`}
+        />
       </dl>
     </Card>
   );

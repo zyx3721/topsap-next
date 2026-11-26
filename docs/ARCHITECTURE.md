@@ -236,7 +236,7 @@ TopSAP-Next/
 │       ├── netcfg/{mod,macos_text,macos_networksetup,routes,hosts,shell,unix}.rs
 │       ├── netcfg/windows/{mod,address}.rs
 │       ├── netcfg/preflight/{mod,windows,macos}.rs # 默认路由 DNS 三态检测与自动获取
-│       ├── session/{mod,engine,health,state}.rs
+│       ├── session/{mod,engine,health,probe,state}.rs
 │       └── commands/{mod,app,conn,diag,net,profiles,settings}.rs
 ├── docs/
 │   ├── ARCHITECTURE.md
@@ -334,7 +334,7 @@ TLS 建连（不校验证书、不发 SNI）
 | `tun` | wintun FFI 绑定、Unix 非阻塞 TUN、读循环、写包、自检与残留清理 | `WintunApi`, `TunDevice`, `SelfTestReport` |
 | `netcfg` | 网卡地址、路由注入/回读、DNS、启动 DNS 预检（默认路由网卡/服务）、旧版 hosts 残留清理 | `NetConfig`, `RouteEntry`, `CleanupLedger`, `preflight::DnsTarget` |
 | `dns_preflight` | 启动首次 DNS 预检缓存与 5 秒超时 | `DnsPreflight`, `DnsInspectionDto` |
-| `session` | 生命周期编排、事件广播、自动重连、数据面健康检查与自愈 | `Engine`, `EngineState`, `EngineEvent`, `HealthTracker` |
+| `session` | 生命周期编排、事件广播、自动重连、数据面健康检查与自愈、DNS 主动探活 | `Engine`, `EngineState`, `EngineEvent`, `HealthTracker`, `DnsProbe` |
 | `platform` | 运行环境探测，区分 Windows 7 与较新系统 | `is_windows7()` |
 | `update` | 版本检查、流式下载、Windows/macOS 安装编排与更新临时目录清理 | `UpdateInfo`, `UpdateProgress`, `check()` |
 | `settings` | 应用设置读写与校验 | `AppSettings` |
@@ -485,12 +485,13 @@ Linux 不安装特权 helper，`is_elevated()` 直接判断 `geteuid() == 0`：
 
 `session/health.rs` 只看链路是否持续可用，不把界面上的单项字节数当作判据：
 
-- 每 15 秒一个窗口，观察 `TUN 收包 → 隧道上行 → 隧道下行 → 网卡投递` 四段增量；
+- 每 15 秒一个窗口，观察 `TUN 收包 → 隧道上行 → 隧道下行 → 网卡投递` 四段增量；单方向累计达到 6 个包即可参与判定；
 - 上行卡死：TUN 持续收包但隧道上行包数不增长，或上行队列丢弃快速增长，连续 3 个窗口判定；
-- 下行静默：存在 TCP/ICMP 上行但隧道下行持续为 0，连续 4 个窗口判定；纯 UDP 单向流量不触发；
+- 下行静默：存在 TCP、ICMP 或 UDP/53 上行但隧道下行持续为 0，连续 4 个窗口判定；纯 UDP 非 DNS 单向流量不触发；
+- DNS 主动探活：`session/probe.rs` 每 30 秒以虚拟 IP 为源、向网关下发的 DNS 发送标准 A 记录查询（查询名优先取门户资源中的内网域名，取不到时回退示例域名）；连续 3 次无响应且窗口内没有下行时判定下行静默，避免「DNS 不通导致浏览器不发起 TCP」时漏判；
 - 下行投递失败：隧道已收到下行但网卡注入失败且丢弃增长，连续 3 个窗口判定；
-- 连接/重连后 30 秒宽限期，隧道代际变化时重置基线；空闲时不做判定；
-- 命中后由 `Engine` 执行隧道级重连（复用 `session_id`），重连后最多观察 10 秒，确认有下行响应才认为恢复；
+- 连接/重连后 30 秒宽限期，隧道代际变化时重置基线；普通空闲不判定，但探活已连续失败时不跳过；
+- 命中后由 `Engine` 执行隧道级重连（复用 `session_id`），重连后最多观察 10 秒：出现下行才记为已恢复；有上行无下行记为未恢复；没有上行则记为「暂无流量可验证」，不冒充已恢复；
 - 90 秒冷却、10 分钟最多 3 次健康恢复；连续 3 次恢复失败则断开并提示「网关未恢复数据转发，请重新登录」。
 
 底层配合：TLS socket 开启 keepalive（空闲 30 秒、间隔 5 秒、3 次探测）；隧道写线程 15 秒超时并在失败/超时后发送 `TunnelEvent::Closed`，让现有重连逻辑接管。

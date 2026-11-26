@@ -111,6 +111,8 @@ pub struct StatsDto {
     pub duration_secs: u64,
     pub bytes_up: u64,
     pub bytes_down: u64,
+    pub packets_up: u64,
+    pub packets_down: u64,
     pub packets_in: u64,
     pub packets_out: u64,
     pub dropped_out: u64,

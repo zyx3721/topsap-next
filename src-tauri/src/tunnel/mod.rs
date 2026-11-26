@@ -64,6 +64,8 @@ pub enum TunnelEvent {
     Ready,
     /// 网关下发的 IPv4 报文
     Data(Vec<u8>),
+    /// 数据帧载荷不是 IPv4，无法注入系统网卡
+    NonIpv4Data { len: usize },
     /// 非数据帧（控制/心跳），仅用于日志
     Control { msg_type: u32, payload: Vec<u8> },
     /// 网关明确拒绝隧道，必须断开而不是自动重连
@@ -349,7 +351,15 @@ async fn handle_frame(
     bytes_down: &Arc<AtomicU64>,
     packets_down: &Arc<AtomicU64>,
 ) -> bool {
-    if frame.msg_type == MSG_DATA && protocol::is_ipv4(&frame.payload) {
+    if frame.msg_type == MSG_DATA {
+        if !protocol::is_ipv4(&frame.payload) {
+            return events
+                .send(TunnelEvent::NonIpv4Data {
+                    len: frame.payload.len(),
+                })
+                .await
+                .is_ok();
+        }
         bytes_down.fetch_add(frame.payload.len() as u64, Ordering::Relaxed);
         packets_down.fetch_add(1, Ordering::Relaxed);
         return events.send(TunnelEvent::Data(frame.payload)).await.is_ok();

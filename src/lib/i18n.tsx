@@ -622,6 +622,7 @@ const EN: Record<string, string> = {
   "连接时间": "Connected for",
   "收发数据": "Sent / received",
   "收发数据（上行 / 下行）": "Traffic (up / down)",
+  "收发包数（上行 / 下行）": "Packets (up / down)",
   "数据面异常，请断开重连": "The data plane is degraded. Disconnect and reconnect.",
   "数据面异常，正在恢复": "The data plane is degraded; recovering",
   "数据面未恢复，继续重试": "The data plane has not recovered; retrying",

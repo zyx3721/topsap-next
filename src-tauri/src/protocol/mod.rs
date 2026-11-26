@@ -51,6 +51,34 @@ pub fn is_ipv4(buf: &[u8]) -> bool {
     buf.len() >= 20 && (buf[0] >> 4) == 4
 }
 
+/// 取 IPv4 UDP 报文的目的端口；非首片、非 UDP 或长度不足时返回 None
+pub fn ipv4_udp_dst_port(buf: &[u8]) -> Option<u16> {
+    ipv4_udp_port(buf, 2)
+}
+
+/// 取 IPv4 UDP 报文的源端口；非首片、非 UDP 或长度不足时返回 None
+pub fn ipv4_udp_src_port(buf: &[u8]) -> Option<u16> {
+    ipv4_udp_port(buf, 0)
+}
+
+fn ipv4_udp_port(buf: &[u8], offset: usize) -> Option<u16> {
+    if !is_ipv4(buf) || buf[9] != 17 {
+        return None;
+    }
+    let flags_fragment = u16::from_be_bytes([buf[6], buf[7]]);
+    if flags_fragment & 0x1fff != 0 {
+        return None;
+    }
+    let header_len = usize::from(buf[0] & 0x0f) * 4;
+    if header_len < 20 || buf.len() < header_len + 8 {
+        return None;
+    }
+    Some(u16::from_be_bytes([
+        buf[header_len + offset],
+        buf[header_len + offset + 1],
+    ]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,6 +98,31 @@ mod tests {
         assert!(!is_ipv4(&pkt));
         // 19 字节不足最小 IP 头
         assert!(!is_ipv4(&[0x45; 19]));
+    }
+
+    #[test]
+    fn 解析_udp_源端口与目的端口() {
+        let mut pkt = vec![0u8; 28];
+        pkt[0] = 0x45;
+        pkt[9] = 17;
+        pkt[20..22].copy_from_slice(&12345u16.to_be_bytes());
+        pkt[22..24].copy_from_slice(&53u16.to_be_bytes());
+        assert_eq!(ipv4_udp_src_port(&pkt), Some(12345));
+        assert_eq!(ipv4_udp_dst_port(&pkt), Some(53));
+    }
+
+    #[test]
+    fn 非_udp_与非首片不解析端口() {
+        let mut tcp = vec![0u8; 28];
+        tcp[0] = 0x45;
+        tcp[9] = 6;
+        assert_eq!(ipv4_udp_dst_port(&tcp), None);
+
+        let mut fragment = vec![0u8; 28];
+        fragment[0] = 0x45;
+        fragment[9] = 17;
+        fragment[7] = 0x01;
+        assert_eq!(ipv4_udp_dst_port(&fragment), None);
     }
 
     #[test]

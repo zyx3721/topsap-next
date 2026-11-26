@@ -7,8 +7,10 @@ pub const GRACE: Duration = Duration::from_secs(30);
 const UPLINK_STALL_WINDOWS: u32 = 3;
 const DOWNLINK_SILENT_WINDOWS: u32 = 4;
 const DELIVERY_STALL_WINDOWS: u32 = 3;
-const MIN_PACKETS: u64 = 20;
+const MIN_PACKETS: u64 = 6;
 const MIN_UPLINK_DROPS: u64 = 100;
+/// DNS 探活每 30 秒一次，连续失败达到该次数即视为下行中断
+pub const PROBE_FAIL_THRESHOLD: u32 = 3;
 
 /// 一次采样的累计计数器；`generation` 用于识别隧道重连后的计数归零
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -22,6 +24,9 @@ pub struct HealthSample {
     pub uplink_drops: u64,
     pub tcp_in: u64,
     pub icmp_in: u64,
+    pub udp_dns_in: u64,
+    /// DNS 探活连续失败次数，成功或新建连接时归零
+    pub probe_failures: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +56,7 @@ struct Delta {
     uplink_drops: u64,
     tcp_in: u64,
     icmp_in: u64,
+    udp_dns_in: u64,
 }
 
 impl Delta {
@@ -64,6 +70,7 @@ impl Delta {
             uplink_drops: current.uplink_drops.saturating_sub(previous.uplink_drops),
             tcp_in: current.tcp_in.saturating_sub(previous.tcp_in),
             icmp_in: current.icmp_in.saturating_sub(previous.icmp_in),
+            udp_dns_in: current.udp_dns_in.saturating_sub(previous.udp_dns_in),
         }
     }
 }
@@ -126,9 +133,17 @@ impl HealthTracker {
         let delta = Delta::between(self.baseline, sample);
         self.baseline = sample;
 
-        if delta.packets_in == 0 && delta.packets_down == 0 {
+        if delta.packets_in == 0
+            && delta.packets_down == 0
+            && sample.probe_failures < PROBE_FAIL_THRESHOLD
+        {
             self.clear_counters();
             return None;
+        }
+
+        if sample.probe_failures >= PROBE_FAIL_THRESHOLD && delta.packets_down == 0 {
+            self.clear_counters();
+            return Some(HealthIssue::DownlinkSilent);
         }
 
         self.observe_uplink(delta);
@@ -168,7 +183,7 @@ impl HealthTracker {
     }
 
     fn observe_downlink(&mut self, delta: Delta) {
-        let response_expected = delta.tcp_in > 0 || delta.icmp_in > 0;
+        let response_expected = delta.tcp_in > 0 || delta.icmp_in > 0 || delta.udp_dns_in > 0;
         if delta.packets_up > 0 && delta.packets_down == 0 && response_expected {
             self.downlink_windows += 1;
             self.downlink_packets = self.downlink_packets.saturating_add(delta.packets_up);
@@ -323,6 +338,58 @@ mod tests {
         let mut tracker = HealthTracker::new();
         observe(&mut tracker, 0, sample(1, 0, 0, 0));
         assert_eq!(observe(&mut tracker, 15, sample(1, 100, 0, 0)), None);
+    }
+
+    #[test]
+    fn udp_dns_查询无响应连续四个窗口后判定() {
+        let mut tracker = HealthTracker::new();
+        observe(&mut tracker, 0, sample(1, 0, 0, 0));
+        observe(&mut tracker, 30, sample(1, 0, 0, 0));
+        for (index, second) in (45..=90).step_by(15).enumerate() {
+            let base = (index as u64 + 1) * 2;
+            let mut current = sample(1, base, base, 0);
+            current.tcp_in = 0;
+            current.udp_dns_in = base;
+            let expected = if index == 3 {
+                Some(HealthIssue::DownlinkSilent)
+            } else {
+                None
+            };
+            assert_eq!(observe(&mut tracker, second, current), expected);
+        }
+    }
+
+    #[test]
+    fn 探活连续失败且窗口内无下行时判定() {
+        let mut tracker = HealthTracker::new();
+        observe(&mut tracker, 0, sample(1, 0, 0, 0));
+        observe(&mut tracker, 30, sample(1, 0, 0, 0));
+        let mut current = sample(1, 0, 0, 0);
+        current.probe_failures = PROBE_FAIL_THRESHOLD;
+        assert_eq!(
+            observe(&mut tracker, 45, current),
+            Some(HealthIssue::DownlinkSilent)
+        );
+    }
+
+    #[test]
+    fn 探活失败但窗口内有下行不判定() {
+        let mut tracker = HealthTracker::new();
+        observe(&mut tracker, 0, sample(1, 0, 0, 0));
+        observe(&mut tracker, 30, sample(1, 0, 0, 0));
+        let mut current = sample(1, 10, 10, 10);
+        current.probe_failures = PROBE_FAIL_THRESHOLD;
+        assert_eq!(observe(&mut tracker, 45, current), None);
+    }
+
+    #[test]
+    fn 探活未达阈值时空闲跳过() {
+        let mut tracker = HealthTracker::new();
+        observe(&mut tracker, 0, sample(1, 0, 0, 0));
+        observe(&mut tracker, 30, sample(1, 0, 0, 0));
+        let mut current = sample(1, 0, 0, 0);
+        current.probe_failures = PROBE_FAIL_THRESHOLD - 1;
+        assert_eq!(observe(&mut tracker, 45, current), None);
     }
 
     #[test]

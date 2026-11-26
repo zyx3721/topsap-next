@@ -2,9 +2,9 @@
 //!
 //! 锁纪律：`std::sync::Mutex` 只在同步块内短持有，绝不跨 `.await`。
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -41,6 +41,7 @@ const HEALTH_VERIFY_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_RECOVERY_COOLDOWN: Duration = Duration::from_secs(90);
 const HEALTH_RECOVERY_WINDOW: Duration = Duration::from_secs(600);
 const HEALTH_RECOVERY_LIMIT: u32 = 3;
+const PROBE_INTERVAL: Duration = Duration::from_secs(30);
 const HEALTH_FAIL_MESSAGE: &str = "网关未恢复数据转发，请重新登录";
 
 struct Inner {
@@ -58,6 +59,7 @@ struct Inner {
     cancel: CancellationToken,
     stats_task: Option<JoinHandle<()>>,
     health_task: Option<JoinHandle<()>>,
+    probe_task: Option<JoinHandle<()>>,
     uplink_task: Option<JoinHandle<()>>,
     tunnel_task: Option<JoinHandle<()>>,
     reader_stop: Option<Arc<AtomicBool>>,
@@ -100,6 +102,7 @@ impl Inner {
             cancel: CancellationToken::new(),
             stats_task: None,
             health_task: None,
+            probe_task: None,
             uplink_task: None,
             tunnel_task: None,
             reader_stop: None,
@@ -129,9 +132,12 @@ pub struct Engine {
     closed_generation: AtomicU64,
     /// 上行报文发送失败计数，用于限频日志
     uplink_drops: AtomicU64,
-    /// 本轮连接内进入上行泵的 TCP / ICMP 包数，用于判断是否应当出现下行响应
+    /// 本轮连接内进入上行泵的 TCP / ICMP / DNS 包数，用于判断是否应当出现下行响应
     health_tcp_in: AtomicU64,
     health_icmp_in: AtomicU64,
+    health_dns_in: AtomicU64,
+    /// DNS 探活连续失败次数，成功或新建连接时归零
+    probe_failures: AtomicU32,
     /// 健康恢复的冷却与次数限制，避免网关持续不转发时无限重连
     health_recovery: Mutex<HealthRecoveryState>,
     /// 自动重连关闭时的提示限频
@@ -176,6 +182,14 @@ enum ReopenError {
     Fatal(String),
 }
 
+/// 重连后数据面验证结果；`NoTraffic` 表示期间没有上行可验证，不能当作已恢复
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerifyOutcome {
+    Recovered,
+    NoTraffic,
+    Failed,
+}
+
 impl Engine {
     pub fn new(app: AppHandle, dll_path: PathBuf) -> Arc<Self> {
         Arc::new(Self {
@@ -192,6 +206,8 @@ impl Engine {
             uplink_drops: AtomicU64::new(0),
             health_tcp_in: AtomicU64::new(0),
             health_icmp_in: AtomicU64::new(0),
+            health_dns_in: AtomicU64::new(0),
+            probe_failures: AtomicU32::new(0),
             health_recovery: Mutex::new(HealthRecoveryState::default()),
             health_notice_at: Mutex::new(None),
         })
@@ -439,6 +455,8 @@ impl Engine {
             duration_secs: inner.started_at.map(|t| t.elapsed().as_secs()).unwrap_or(0),
             bytes_up: stats.bytes_up,
             bytes_down: stats.bytes_down,
+            packets_up: stats.packets_up,
+            packets_down: stats.packets_down,
             packets_in,
             packets_out,
             dropped_out,
@@ -452,6 +470,9 @@ impl Engine {
             }
             Some(1) => {
                 self.health_icmp_in.fetch_add(1, Ordering::Relaxed);
+            }
+            Some(17) if crate::protocol::ipv4_udp_dst_port(packet) == Some(53) => {
+                self.health_dns_in.fetch_add(1, Ordering::Relaxed);
             }
             _ => {}
         }
@@ -472,6 +493,8 @@ impl Engine {
             uplink_drops: self.uplink_drops.load(Ordering::Relaxed),
             tcp_in: self.health_tcp_in.load(Ordering::Relaxed),
             icmp_in: self.health_icmp_in.load(Ordering::Relaxed),
+            udp_dns_in: self.health_dns_in.load(Ordering::Relaxed),
+            probe_failures: self.probe_failures.load(Ordering::Relaxed),
         })
     }
 
@@ -529,6 +552,27 @@ impl Engine {
             .unwrap_or_else(|e| e.into_inner()) = None;
         self.health_tcp_in.store(0, Ordering::Relaxed);
         self.health_icmp_in.store(0, Ordering::Relaxed);
+        self.health_dns_in.store(0, Ordering::Relaxed);
+        self.probe_failures.store(0, Ordering::Relaxed);
+    }
+
+    fn note_probe_success(&self) {
+        let previous = self.probe_failures.swap(0, Ordering::Relaxed);
+        if previous >= crate::session::health::PROBE_FAIL_THRESHOLD {
+            self.log(format!("DNS 探活已恢复（此前连续失败 {previous} 次）"));
+        }
+    }
+
+    fn note_probe_failure(&self) {
+        let count = self
+            .probe_failures
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        if count == crate::session::health::PROBE_FAIL_THRESHOLD {
+            self.log(format!("DNS 探活连续失败 {count} 次，隧道下行可能已中断"));
+        } else if count > crate::session::health::PROBE_FAIL_THRESHOLD && count % 10 == 0 {
+            self.log(format!("DNS 探活连续失败 {count} 次"));
+        }
     }
 
     fn on_health_issue(self: &Arc<Self>, issue: HealthIssue) {
@@ -1384,6 +1428,10 @@ impl Engine {
         // 统计推送
         let stats_task = spawn_stats(Arc::downgrade(self), cancel.clone());
         let health_task = spawn_health(Arc::downgrade(self), cancel.clone());
+        let probe_task = spawn_session_probe(Arc::downgrade(self), cancel.clone(), session);
+        if probe_task.is_none() {
+            self.log("本次会话未启用 DNS 探活（缺少虚拟 IP、DNS 或 DNS 不在资源路由内）");
+        }
 
         {
             let mut inner = self.lock();
@@ -1396,11 +1444,13 @@ impl Engine {
             inner.tunnel_task = Some(tunnel_task);
             inner.stats_task = Some(stats_task);
             inner.health_task = Some(health_task);
+            inner.probe_task = probe_task;
             inner.started_at = Some(Instant::now());
         }
 
         self.set_phase(Phase::Connected, "");
         self.uplink_drops.store(0, Ordering::Relaxed);
+        self.probe_failures.store(0, Ordering::Relaxed);
         if self.closed_generation.load(Ordering::SeqCst) == generation {
             self.on_tunnel_closed("连接建立后立即断开".to_string(), generation);
         }
@@ -1446,6 +1496,7 @@ impl Engine {
             tunnel_task,
             stats_task,
             health_task,
+            probe_task,
             session,
         ) = {
             let mut inner = self.lock();
@@ -1461,6 +1512,7 @@ impl Engine {
                 inner.tunnel_task.take(),
                 inner.stats_task.take(),
                 inner.health_task.take(),
+                inner.probe_task.take(),
                 inner.session.clone(),
             )
         };
@@ -1479,6 +1531,10 @@ impl Engine {
             let _ = task.await;
         }
         if let Some(task) = health_task {
+            task.abort();
+            let _ = task.await;
+        }
+        if let Some(task) = probe_task {
             task.abort();
             let _ = task.await;
         }
@@ -1650,15 +1706,23 @@ impl Engine {
 
             match self.reopen_tunnel(&session, &cancel).await {
                 Ok(generation) => {
-                    if self
+                    match self
                         .verify_data_plane(generation, HEALTH_VERIFY_TIMEOUT)
                         .await
                     {
-                        self.log("隧道已恢复");
-                        return;
+                        VerifyOutcome::Recovered => {
+                            self.log("隧道已恢复");
+                            return;
+                        }
+                        VerifyOutcome::NoTraffic => {
+                            self.log("新隧道已建立，暂无流量可验证数据面");
+                            return;
+                        }
+                        VerifyOutcome::Failed => {
+                            self.log("新隧道已建立，但数据面未恢复");
+                            self.set_phase(Phase::Reconnecting, "数据面未恢复，继续重试");
+                        }
                     }
-                    self.log("新隧道已建立，但数据面未恢复");
-                    self.set_phase(Phase::Reconnecting, "数据面未恢复，继续重试");
                 }
                 Err(ReopenError::Retry(err)) => self.log(format!("重连失败：{err}")),
                 Err(ReopenError::Fatal(err)) => {
@@ -1677,31 +1741,39 @@ impl Engine {
         let _ = self.disconnect().await;
     }
 
-    async fn verify_data_plane(self: &Arc<Self>, generation: u64, timeout: Duration) -> bool {
+    async fn verify_data_plane(
+        self: &Arc<Self>,
+        generation: u64,
+        timeout: Duration,
+    ) -> VerifyOutcome {
         let Some(baseline) = self.health_sample() else {
-            return false;
+            return VerifyOutcome::Failed;
         };
         if baseline.generation != generation {
-            return false;
+            return VerifyOutcome::Failed;
         }
         let started = Instant::now();
         let mut saw_uplink = false;
         loop {
             if started.elapsed() >= timeout {
-                return !saw_uplink;
+                return if saw_uplink {
+                    VerifyOutcome::Failed
+                } else {
+                    VerifyOutcome::NoTraffic
+                };
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
             if self.lock().cancel.is_cancelled() {
-                return false;
+                return VerifyOutcome::Failed;
             }
             let Some(sample) = self.health_sample() else {
-                return false;
+                return VerifyOutcome::Failed;
             };
             if sample.generation != generation {
-                return false;
+                return VerifyOutcome::Failed;
             }
             if sample.packets_down > baseline.packets_down {
-                return true;
+                return VerifyOutcome::Recovered;
             }
             if sample.packets_in > baseline.packets_in {
                 saw_uplink = true;
@@ -1778,16 +1850,25 @@ impl Engine {
             ));
             match self.reopen_tunnel(&session, &cancel).await {
                 Ok(generation) => {
-                    if self
+                    match self
                         .verify_data_plane(generation, HEALTH_VERIFY_TIMEOUT)
                         .await
                     {
-                        self.log("数据面已恢复");
-                        self.set_phase(Phase::Connected, "");
-                        return;
+                        VerifyOutcome::Recovered => {
+                            self.log("数据面已恢复");
+                            self.set_phase(Phase::Connected, "");
+                            return;
+                        }
+                        VerifyOutcome::NoTraffic => {
+                            self.log("新隧道已建立，暂无流量可验证数据面");
+                            self.set_phase(Phase::Connected, "");
+                            return;
+                        }
+                        VerifyOutcome::Failed => {
+                            self.log("新隧道已建立，但数据面未恢复");
+                            self.set_phase(Phase::Reconnecting, "数据面未恢复，继续重试");
+                        }
                     }
-                    self.log("新隧道已建立，但数据面未恢复");
-                    self.set_phase(Phase::Reconnecting, "数据面未恢复，继续重试");
                 }
                 Err(ReopenError::Retry(err)) => self.log(format!("数据面恢复失败：{err}")),
                 Err(ReopenError::Fatal(err)) => {
@@ -2005,6 +2086,7 @@ impl Engine {
         }
         self.set_phase(Phase::Connected, "");
         self.uplink_drops.store(0, Ordering::Relaxed);
+        self.probe_failures.store(0, Ordering::Relaxed);
         if self.closed_generation.load(Ordering::SeqCst) == generation {
             self.set_phase(Phase::Reconnecting, "正在重连");
             return Err(ReopenError::Retry("新隧道建立后立即断开".to_string()));
@@ -2028,10 +2110,21 @@ fn spawn_tunnel_events(
     generation: u64,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
+        let mut non_ipv4 = 0u64;
         while let Some(event) = event_rx.recv().await {
             match event {
                 TunnelEvent::Data(packet) => {
                     let _ = tun.send_packet(&packet);
+                }
+                TunnelEvent::NonIpv4Data { len } => {
+                    non_ipv4 += 1;
+                    if non_ipv4 == 1 || non_ipv4 % 100 == 0 {
+                        if let Some(engine) = engine.upgrade() {
+                            engine.log(format!(
+                                "下行数据帧不是 IPv4（len={len}），已丢弃，累计 {non_ipv4} 个"
+                            ));
+                        }
+                    }
                 }
                 TunnelEvent::Control { msg_type, payload } => {
                     if let Some(engine) = engine.upgrade() {
@@ -2112,6 +2205,108 @@ fn spawn_health(engine: std::sync::Weak<Engine>, cancel: CancellationToken) -> J
                     let Some(sample) = engine.health_sample() else { continue };
                     if let Some(issue) = tracker.observe(started.elapsed(), sample) {
                         engine.on_health_issue(issue);
+                    }
+                }
+            }
+        }
+    })
+}
+
+/// DNS 是否落在本次注入的资源路由内；公网 DNS 走物理网卡，探活没有意义
+fn route_covers_ip(routes: &[RouteEntry], ip: IpAddr) -> bool {
+    let IpAddr::V4(target) = ip else {
+        return false;
+    };
+    let target = u32::from(target);
+    routes.iter().any(|route| {
+        let Ok(dest) = route.dest.parse::<std::net::Ipv4Addr>() else {
+            return false;
+        };
+        let prefix = route.prefix.min(32);
+        let mask = if prefix == 0 {
+            0
+        } else {
+            u32::MAX << (32 - u32::from(prefix))
+        };
+        u32::from(dest) & mask == target & mask
+    })
+}
+
+/// 从门户资源 URL 提取用于 DNS 查询的主机名；IP 或空值返回 None
+fn resource_host(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?;
+    let host = host.split(':').next()?.trim().trim_end_matches('.');
+    if host.is_empty() || host.parse::<IpAddr>().is_ok() {
+        return None;
+    }
+    Some(host.to_ascii_lowercase())
+}
+
+/// 探活查询名优先取门户资源的内网域名，取不到时回退示例域名
+fn probe_name(session: &LoginSession) -> String {
+    session
+        .resources
+        .iter()
+        .filter_map(|item| resource_host(&item.url))
+        .find(|host| host.contains('.'))
+        .unwrap_or_else(|| crate::session::probe::FALLBACK_NAME.to_string())
+}
+
+/// 为本次会话启动 DNS 探活；缺少可用虚拟 IP、DNS 或 DNS 不在资源路由内时不启动
+fn spawn_session_probe(
+    engine: std::sync::Weak<Engine>,
+    cancel: CancellationToken,
+    session: &LoginSession,
+) -> Option<JoinHandle<()>> {
+    let local = session.vip.parse::<IpAddr>().ok()?;
+    if local.is_unspecified() {
+        return None;
+    }
+    let server = [session.dns1.as_str(), session.dns2.as_str()]
+        .into_iter()
+        .filter_map(|text| text.parse::<IpAddr>().ok())
+        .find(|ip| route_covers_ip(&session.routes, *ip))?;
+    Some(spawn_dns_probe(
+        engine,
+        cancel,
+        local,
+        SocketAddr::new(server, 53),
+        probe_name(session),
+    ))
+}
+
+/// 周期向网关下发的 DNS 发送查询，连续失败时交给健康判定触发恢复
+fn spawn_dns_probe(
+    engine: std::sync::Weak<Engine>,
+    cancel: CancellationToken,
+    local: IpAddr,
+    server: SocketAddr,
+    name: String,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut probe = match crate::session::probe::DnsProbe::bind(local, server, name).await {
+            Ok(probe) => probe,
+            Err(err) => {
+                if let Some(engine) = engine.upgrade() {
+                    engine.log(format!("DNS 探活不可用：{err}"));
+                }
+                return;
+            }
+        };
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                _ = tokio::time::sleep(PROBE_INTERVAL) => {
+                    let Some(engine) = engine.upgrade() else { return };
+                    if engine.lock().phase != Phase::Connected {
+                        continue;
+                    }
+                    if probe.query().await {
+                        engine.note_probe_success();
+                    } else {
+                        engine.note_probe_failure();
                     }
                 }
             }
@@ -2401,5 +2596,60 @@ mod tests {
                 assert!(millis <= base * 12 / 10, "抖动上限越界：{millis} vs {base}");
             }
         }
+    }
+
+    #[test]
+    fn dns_是否落在资源路由内() {
+        let routes = vec![
+            RouteEntry {
+                dest: "10.10.20.0".to_string(),
+                mask: "255.255.254.0".to_string(),
+                prefix: 23,
+            },
+            RouteEntry {
+                dest: "172.21.8.0".to_string(),
+                mask: "255.255.248.0".to_string(),
+                prefix: 21,
+            },
+        ];
+        assert!(route_covers_ip(&routes, "10.10.20.53".parse().unwrap()));
+        assert!(route_covers_ip(&routes, "172.21.15.53".parse().unwrap()));
+        assert!(!route_covers_ip(&routes, "10.10.22.53".parse().unwrap()));
+        assert!(!route_covers_ip(&routes, "203.0.113.53".parse().unwrap()));
+    }
+
+    #[test]
+    fn 非法路由目标不参与匹配() {
+        let routes = vec![RouteEntry {
+            dest: "not-an-ip".to_string(),
+            mask: "255.255.255.0".to_string(),
+            prefix: 24,
+        }];
+        assert!(!route_covers_ip(&routes, "10.10.20.53".parse().unwrap()));
+    }
+
+    #[test]
+    fn 从资源_url_提取查询域名() {
+        assert_eq!(
+            resource_host("https://oa.example.com/path?x=1"),
+            Some("oa.example.com".to_string())
+        );
+        assert_eq!(
+            resource_host("vpn.example.com:443"),
+            Some("vpn.example.com".to_string())
+        );
+        assert_eq!(resource_host("https://10.8.0.1:443"), None);
+        assert_eq!(resource_host(""), None);
+    }
+
+    #[test]
+    fn 探活名优先资源域名并回退示例域名() {
+        let mut session = LoginSession::default();
+        assert_eq!(probe_name(&session), crate::session::probe::FALLBACK_NAME);
+        session.resources.push(crate::auth::model::ResourceEntry {
+            url: "https://oa.example.com/".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(probe_name(&session), "oa.example.com");
     }
 }
